@@ -63,7 +63,10 @@ seams. Retrieval, agents, guardrails, and caching are the later labs' work.
 - **2.4** *(Deferred to Lab 7.)* The model price table is cost-optimization work and is not
   part of this lab.
 - **2.5** Invalid configuration fails at construction with a message naming the offending
-  value — never a silent default, never a failure at first use.
+  value — never a silent default, never a failure at first use. A **blank or
+  whitespace-only** credential counts as missing: `.env.example` ships with an empty
+  `OPENAI_API_KEY=`, so a copied-but-unfilled `.env` is the most likely misconfiguration
+  and must not start cleanly.
 - **2.6** The API key is never logged, never included in `repr`, and never returned by any
   endpoint.
 - **2.7** Settings are cached so the environment is read once per process.
@@ -100,6 +103,8 @@ seams. Retrieval, agents, guardrails, and caching are the later labs' work.
 - **5.7** Registered exception handlers for `BankAssistError`, HTTP errors, and validation
   errors; unhandled exceptions are caught in the middleware so the 500 envelope keeps its
   trace id (§5.3).
+- **5.8** Substituting the error envelope must **preserve protocol headers** set on the
+  original exception — `Allow` on a 405 (required by RFC 9110), `WWW-Authenticate` on a 401.
 
 ### FR-L1-6 — LLM abstraction
 - **6.1** An `LLMClient` protocol: given messages and options, return a typed response.
@@ -219,10 +224,12 @@ Streamlit UI, and authentication.
 |---|---|
 | AC-L1-1 | `python -c "import bankassist"` succeeds with no environment variables set |
 | AC-L1-2 | Settings load from environment; a missing API key with provider `openai` raises `ConfigurationError` naming the field |
+| AC-L1-2a | A blank or whitespace-only `OPENAI_API_KEY` is rejected the same way as a missing one |
 | AC-L1-3 | `LLM_MODEL_STRONG` unset ⇒ `model_for_tier("strong")` returns the fast model |
 | AC-L1-4 | Settings `repr` and the health response contain no API key |
 | AC-L1-5 | `GET /health` returns 200 with the documented body and an `X-Trace-Id` header |
 | AC-L1-6 | An unknown route returns the standard error envelope, not a FastAPI default |
+| AC-L1-6a | A 405 keeps its `Allow` header, and an `HTTPException`'s custom headers survive the envelope substitution |
 | AC-L1-7 | A raised `BankAssistError` maps to its declared status and envelope |
 | AC-L1-8 | An unexpected exception returns 500 with no internal detail in the body, and still carries its trace id in both the envelope and the header |
 | AC-L1-9 | `StubLLMClient` returns scripted responses and records calls |

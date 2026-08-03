@@ -57,14 +57,27 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_credential(self) -> Settings:
-        """Fail at construction rather than at first LLM call."""
-        if self.llm_provider == "openai" and self.openai_api_key is None:
+        """Fail at construction rather than at first LLM call.
+
+        A blank value counts as missing. `.env.example` ships with an empty
+        `OPENAI_API_KEY=`, so copying it and forgetting to fill it in yields
+        `SecretStr('')` rather than `None` — the single most likely
+        misconfiguration, and the one that would otherwise start cleanly and
+        fail later with an opaque 401 from the provider.
+        """
+        if self.llm_provider == "openai" and not self._has_credential():
             raise ConfigurationError(
-                "OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'. "
-                "Copy .env.example to .env and set it.",
+                "OPENAI_API_KEY is required when LLM_PROVIDER is 'openai', and must "
+                "not be blank. Copy .env.example to .env and set it.",
                 details={"field": "openai_api_key"},
             )
         return self
+
+    def _has_credential(self) -> bool:
+        """True when a non-blank API key is configured."""
+        if self.openai_api_key is None:
+            return False
+        return bool(self.openai_api_key.get_secret_value().strip())
 
     def model_for_tier(self, tier: ModelTier) -> str:
         """Resolve a tier name to a concrete model id."""

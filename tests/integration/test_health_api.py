@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from bankassist.api.app import TRACE_HEADER, create_app
@@ -164,6 +164,35 @@ def test_validation_error_uses_the_error_envelope(app: FastAPI) -> None:
     assert body["error"]["code"] == "validation_error"
     assert body["error"]["details"]["errors"][0]["loc"] == ["query", "count"]
     assert body["trace_id"]
+
+
+def test_method_not_allowed_preserves_the_allow_header(client: TestClient) -> None:
+    """RFC 9110 requires `Allow` on a 405. Swapping in our envelope must not
+    strip protocol headers Starlette set on the exception."""
+    response = client.post("/health")
+
+    assert response.status_code == 405
+    assert "GET" in response.headers["allow"]
+    assert response.json()["error"]["code"] == "http_error"
+    assert response.headers[TRACE_HEADER]
+
+
+def test_http_exception_headers_are_carried_through(app: FastAPI) -> None:
+    """The same applies to any header an HTTPException sets, e.g. auth challenges."""
+
+    @app.get("/needs-auth")
+    def _needs_auth() -> None:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": 'Bearer realm="bankassist"'},
+        )
+
+    response = TestClient(app).get("/needs-auth")
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer realm="bankassist"'
+    assert response.json()["error"]["code"] == "http_error"
 
 
 def test_openapi_docs_are_available(client: TestClient) -> None:

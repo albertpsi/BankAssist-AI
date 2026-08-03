@@ -41,6 +41,25 @@ def test_missing_api_key_raises_configuration_error() -> None:
     assert "OPENAI_API_KEY" in excinfo.value.message
 
 
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+def test_blank_api_key_is_treated_as_missing(blank: str) -> None:
+    """`.env.example` ships `OPENAI_API_KEY=`, so a copied-but-unfilled .env
+    yields SecretStr('') rather than None. That must fail at construction, not
+    at the first provider call."""
+    with pytest.raises(ConfigurationError) as excinfo:
+        Settings(llm_provider="openai", openai_api_key=blank, _env_file=None)
+
+    assert excinfo.value.details["field"] == "openai_api_key"
+
+
+def test_blank_api_key_from_environment_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The realistic path: the value arrives from the environment, not a literal."""
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+
+    with pytest.raises(ConfigurationError, match="blank"):
+        Settings(_env_file=None)
+
+
 def test_strong_tier_falls_back_to_fast_when_unset(settings: Settings) -> None:
     """AC-L1-3: the strong tier is optional by design."""
     assert settings.llm_model_strong is None

@@ -34,17 +34,26 @@ def _error_response(
     code: str,
     message: str,
     details: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
-    """Build the one error envelope every failure path returns."""
+    """Build the one error envelope every failure path returns.
+
+    ``headers`` carries through any protocol headers the original exception set —
+    ``Allow`` on a 405, ``WWW-Authenticate`` on a 401. Replacing the body with our
+    envelope must not strip headers the HTTP spec requires or clients depend on.
+    """
     trace_id = get_trace_id()
     body = ErrorResponse(
         error=ErrorDetail(code=code, message=message, details=details or {}),
         trace_id=trace_id,
     )
+    merged = dict(headers or {})
+    if trace_id:
+        merged[TRACE_HEADER] = trace_id
     return JSONResponse(
         status_code=status_code,
         content=body.model_dump(),
-        headers={TRACE_HEADER: trace_id} if trace_id else None,
+        headers=merged or None,
     )
 
 
@@ -108,7 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
-        return _error_response(exc.status_code, "http_error", str(exc.detail))
+        return _error_response(exc.status_code, "http_error", str(exc.detail), headers=exc.headers)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
