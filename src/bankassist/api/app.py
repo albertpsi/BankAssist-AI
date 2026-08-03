@@ -15,7 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from bankassist.api.routes import health
+from bankassist.api.routes import health, rag
 from bankassist.api.schemas import ErrorDetail, ErrorResponse
 from bankassist.config import Settings, get_settings
 from bankassist.context import get_trace_id, trace_context
@@ -71,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.tracer = build_tracer(enabled=resolved.tracing_enabled)
 
     app.include_router(health.router)
+    app.include_router(rag.router)
 
     @app.middleware("http")
     async def trace_and_log(

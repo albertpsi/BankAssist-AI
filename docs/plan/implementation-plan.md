@@ -1,8 +1,14 @@
 # Implementation Plan
 
-**Status:** Approved with amendments — **Lab 1 authorized; Labs 2–7 not yet authorized**
-**Version:** 0.2
+**Status:** Approved with amendments — **Labs 1–2 complete; Labs 3–7 not yet authorized**
+**Version:** 0.3
 **Date:** 2026-08-03
+
+> **Amendment log — v0.3.** Lab 2 restated against its lab brief: Pinecone replaces
+> ChromaDB, `text-embedding-3-small` replaces local MiniLM embeddings
+> ([ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md), Proposed), chunking moves
+> to characters, and the endpoint becomes `POST /rag/query`. Lab 3's cross-encoder reranking
+> is now an open item, since `sentence-transformers` is no longer in the stack.
 
 > **Amendment log — v0.2.** OpenAI is the initial provider using the existing credential.
 > Economical models are the default; a stronger model is optional and judge-only. Guardrails
@@ -114,42 +120,60 @@ grounded, cited answer.
 
 **Estimated effort:** ~3 h
 
+> **Amended 2026-08-03 (v0.3), at the start of Lab 2.** The lab brief mandates **Pinecone**
+> and **`text-embedding-3-small`**, and forbids `sentence-transformers`. That overrides the
+> ChromaDB + local-MiniLM choice recorded in v0.2 — see
+> [ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md), which is **Proposed** and
+> needs Gate 3 approval. Chunking moves from tokens to characters (700–900, overlap
+> 100–150), the endpoint becomes `POST /rag/query`, and chunk metadata narrows to the four
+> fields the brief names. Full detail, including every conflict and how it was resolved:
+> [`docs/requirements/lab-02-basic-rag.md`](../requirements/lab-02-basic-rag.md).
+
 ### Steps
 
-1. **Environment verification** *(before any code)* — create the venv, install
-   `requirements.txt`, confirm `chromadb` installs on Python 3.13, download the MiniLM
-   embedding model. This is the risk checkpoint from the technology-stack doc; resolve it
-   before building on top of it.
-2. **Synthetic policy corpus** — `data/policies/*.md`, 10–15 documents: credit card terms,
-   APR and interest, fees schedule, dispute and chargeback policy, fraud liability,
-   account types, overdraft, statements and billing cycles, rewards, card replacement,
-   general banking glossary. Each carries frontmatter: `doc_id`, `title`, `category`,
-   `product`, `effective_date`.
-3. *(Done in Lab 1)* Settings module — extend `src/bankassist/config.py` with retrieval
-   settings only. Nothing else reads the environment.
+1. **Environment verification** *(before any code)* — install `pinecone`, `streamlit`, and
+   `PyYAML` into the existing venv; confirm `PINECONE_API_KEY` is provisioned. This replaces
+   the ChromaDB-on-3.13 risk checkpoint, which no longer applies.
+2. **Synthetic policy corpus** — `data/policies/*.md`, 12 documents: credit card terms, APR
+   and interest, fees schedule, chargeback policy, dispute resolution, fraud liability, KYC
+   and onboarding, account types, overdraft, statements and billing cycles, rewards, card
+   replacement. Frontmatter carries `title` and `category` only; `product` and
+   `effective_date` arrive in Lab 3 with metadata filtering.
+3. *(Done in Lab 1)* Settings module — extend `src/bankassist/config.py` with Pinecone,
+   embedding, chunking, and retrieval settings. Nothing else reads the environment.
 4. *(Moved to Lab 1)* `LLMClient` interface + OpenAI adapter — `src/bankassist/llm/`.
    Records model, tokens, and latency on every call from the start.
 5. *(Done in Lab 1)* Tracer — the span interface and in-memory implementation already exist;
    Lab 2 simply calls it from the ingestion and retrieval paths. Persistence lands in Lab 6.
-6. **Chunker** — heading-aware Markdown splitting, ~500 tokens, ~80 overlap, metadata
-   preserved.
-7. **Ingestion script** — `scripts/ingest.py`: corpus → chunks → embeddings → persistent
-   Chroma collection. Idempotent; reports chunk counts.
-8. **Basic retriever** — embed query, top-*k* similarity search, return chunks with scores.
-9. **Grounded generation** — a prompt that answers *only* from context, cites `doc_id`, and
-   says "I don't have information on that" when context is empty or irrelevant.
-10. **Minimal API + UI** — `POST /chat` and a single-tab Streamlit chat.
-11. **Tests** — chunking boundaries, metadata preservation, ingest→query round-trip,
-    retrieval quality on a fixed question set, the no-answer path, and citation presence.
+6. **Chunker** — deterministic character-based splitting, 800 chars target (700–900 window),
+   120 overlap, with a boundary preference for paragraph → sentence → whitespace. Metadata
+   preserved. No semantic or layout-aware chunking.
+7. **Ingestion script** — `scripts/ingest_policies.py`: corpus → chunks →
+   `text-embedding-3-small` → Pinecone namespace `bank-policies`. Idempotent via
+   deterministic vector ids; reports chunk counts.
+8. **Basic retriever** — embed query, top-5 similarity search, return chunks with scores.
+   Similarity only: no hybrid, filters, or reranking.
+9. **Grounded generation** — a prompt that answers *only* from context, lists source
+   document names, and returns exactly "I couldn't find this information in the available
+   banking policy documents." when the context does not support an answer.
+10. **Minimal API + UI** — `POST /rag/query` returning `{answer, sources}`, and a Streamlit
+    page that is question → Ask → answer → sources and nothing else.
+11. **Tests** — chunking boundaries, metadata extraction, ingestion idempotency, prompt
+    construction, retrieval ordering and top-k, the no-answer path, citation presence, and
+    the API contract. All OpenAI and Pinecone calls are stubbed; no test spends money.
 
 ### Exit criteria
-AC-2.1 – AC-2.4. `pytest` green, `ruff` clean.
+AC-2.1 – AC-2.4, expanded into AC-L2-1 – AC-L2-11 in the Lab 2 spec. `pytest` green,
+`ruff` clean, suite runs with no credentials.
 **This is the feature that completes AC-1.3** — it goes through spec → design → plan →
 approval → implement → test → self-review → approval → PR.
 
 ### Evidence
-Ingestion output with chunk counts, a screenshot of a cited answer, a screenshot of the
-correct "I don't know" refusal, and a retrieval-quality table for the fixed question set.
+Ten screenshots, captured at gated milestones: the policy folder; the chunk-generation
+summary; embedding generation naming `text-embedding-3-small`; the populated Pinecone index;
+retrieval logs with similarity scores; the pipeline answering end to end; the Streamlit
+interface; and the three required demo queries (chargeback time limit, disputing an
+unauthorized transaction, KYC documents).
 
 ---
 
@@ -445,7 +469,9 @@ the lab evidence capture.
 | Provider prompt caching not measurably observable | Accepted by design — Lab 7's five other levers are provider-independent and carry the lab; the absence of a signal is reported as a finding |
 | Configured model id unavailable on the account | Settings validate model ids at startup and fail loudly, naming the configured value |
 | Small model underperforms on a classification task | Iterate the prompt first; the stronger model stays judge-only. If a task genuinely needs it, record that as a finding rather than silently upgrading the default tier |
-| `chromadb` fails to install on Python 3.13 | Verified in the very first step of Lab 2; fall back to the 3.12 interpreter or a numpy+SQLite store |
+| ~~`chromadb` fails to install on Python 3.13~~ — retired at v0.3; Chroma is no longer in the stack | — |
+| Pinecone credential not provisioned when Lab 2 reaches the vector-store milestone | Flagged at the Lab 2 approval gate; milestones M1–M3 (corpus, chunking, embeddings) run without it |
+| Lab 3's cross-encoder reranker assumed `sentence-transformers`, which ADR-0007 removes | Open item, recorded in ADR-0007's consequences. Decide the reranking approach at the start of Lab 3, not by discovering it mid-lab |
 | Tracer retrofitted too late, forcing rework across every layer | Tracer interface lands in Lab 2 as a stub; every layer calls it from the start |
 | Guardrails over-block and the demo looks broken | Build the allow-set corpus *before* the classifier; treat over-blocking as a test failure |
 | Prompt caching silently never fires | Assert `cache_read_input_tokens > 0`; the audit in step 1 is a prerequisite, not a cleanup |

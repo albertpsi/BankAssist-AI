@@ -134,11 +134,21 @@ raising it as an ADR first.
 
 ## 7. Banking-data handling rules
 
-- All data is **synthetic**. Generation scripts live in `scripts/` and are deterministic
-  (fixed seed) so the dataset is reproducible.
+**Amended 2026-08-03 (Lab 2).** There are now two distinct data classes, and the rules
+differ. The original blanket "everything is synthetic" was written before a real policy
+corpus was supplied.
+
+| Class | What it is | Rule |
+|---|---|---|
+| **Policy corpus** (`data/policies/`) | Real, publicly published policy, FAQ, form, and guide documents from SBI Card and State Bank of India | Real institution, real published text. Contains **no PII, no account numbers, no card numbers**. Third-party material: the publish/ignore decision is the user's, taken at the Git gate |
+| **Customer data** (Labs 4+) | Customers, accounts, cards, transactions, dispute cases | **Synthetic, always.** Every rule below applies in full |
+
+- All **customer** data is **synthetic**. Generation scripts live in `scripts/` and are
+  deterministic (fixed seed) so the dataset is reproducible.
 - Card numbers in the mock dataset are non-Luhn-valid test values, always stored and
   displayed masked (`****-****-****-4321`). Full PANs never exist in the repo.
-- No real names, real addresses, real emails, or real institutions.
+- No real names, real addresses, or real emails — in either class. Real *institutions*
+  appear only as the publisher of a public policy document.
 - Every tool that returns customer data takes a `customer_id` and returns data **only**
   for that customer. Cross-customer access is a guardrail failure, and there is a test
   that asserts it.
