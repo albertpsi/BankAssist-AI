@@ -1,0 +1,30 @@
+# BankAssist AI — Lab 1 (application foundation) dependency set.
+#
+# Minimums, not exact pins: exact versions are frozen with `pip freeze` after the
+# first successful install on the target machine. Later labs append their own
+# dependencies here as they are introduced — nothing is installed before the lab
+# that needs it.
+
+# --- Application ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.0
+
+# --- LLM provider (ADR-0005) ---
+openai>=1.55.0
+
+# --- Development / quality gates ---
+pytest>=8.3.0
+pytest-cov>=6.0.0
+httpx>=0.27.0          # required by fastapi.testclient
+ruff>=0.8.0
+
+# --- Added in later labs ---
+# chromadb              (Lab 2)  persistent vector store
+# sentence-transformers (Lab 2)  embeddings + cross-encoder reranking
+# rank-bm25             (Lab 3)  sparse retrieval
+# tiktoken              (Lab 3)  context token budgeting
+# streamlit             (Lab 2)  demo UI
+# PyYAML                (Lab 6)  golden dataset

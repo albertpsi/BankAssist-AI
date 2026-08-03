@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bankassist"
+version = "0.1.0"
+description = "A governed, multi-agent banking assistant — Enterprise Agentic AI lab project"
+requires-python = ">=3.12"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "RET",  # flake8-return
+    "ARG",  # unused arguments
+    "PTH",  # prefer pathlib
+    "TID",  # tidy imports
+]
+ignore = [
+    "B008",  # FastAPI's Depends() in defaults is the documented idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+# ARG: tests take fixture arguments they do not always read.
+# SIM117: nested `with` is the subject under test in the tracing suite — flattening
+#         the blocks would obscure the parent/child relationship being asserted.
+"tests/**" = ["ARG001", "ARG002", "SIM117"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bankassist"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+markers = [
+    "live: hits a real LLM provider; excluded from the default run (requires an API key)",
+]
+filterwarnings = ["error::DeprecationWarning:bankassist.*"]
