@@ -8,10 +8,12 @@ def _node_ids(events) -> set[str]:
 
 
 def test_policy_query_routes_through_policy_agent_and_rag_only(
-    graph_db_path, fake_pipeline, cust001_context
+    graph_db_path, fake_pipeline, cust001_context, fake_nemo
 ):
     llm = StubLLMClient(['{"route": "POLICY", "confidence": 0.9, "reason": "KYC"}'])
-    graph = build_graph(llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path)
+    graph = build_graph(
+        llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path, nemo=fake_nemo
+    )
     config = run_config("SESS-POLICY", cust001_context)
 
     result = graph.invoke(
@@ -27,10 +29,12 @@ def test_policy_query_routes_through_policy_agent_and_rag_only(
 
 
 def test_banking_query_routes_through_banking_agent_and_scoped_tool(
-    graph_db_path, fake_pipeline, cust001_context
+    graph_db_path, fake_pipeline, cust001_context, fake_nemo
 ):
     llm = StubLLMClient(['{"route": "BANKING", "confidence": 0.9, "reason": "own transactions"}'])
-    graph = build_graph(llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path)
+    graph = build_graph(
+        llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path, nemo=fake_nemo
+    )
     config = run_config("SESS-BANKING", cust001_context)
 
     result = graph.invoke(
@@ -44,11 +48,13 @@ def test_banking_query_routes_through_banking_agent_and_scoped_tool(
 
 
 def test_dispute_workflow_multiturn_then_approve_creates_dispute(
-    graph_db_path, fake_pipeline, cust001_context
+    graph_db_path, fake_pipeline, cust001_context, fake_nemo
 ):
     supervisor_reply = '{"route": "DISPUTE", "confidence": 0.9, "reason": "unrecognized txn"}'
     llm = StubLLMClient([supervisor_reply, supervisor_reply])
-    graph = build_graph(llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path)
+    graph = build_graph(
+        llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path, nemo=fake_nemo
+    )
     config = run_config("SESS-DISPUTE-1", cust001_context)
 
     turn1 = graph.invoke(
@@ -79,11 +85,13 @@ def test_dispute_workflow_multiturn_then_approve_creates_dispute(
 
 
 def test_dispute_workflow_rejection_never_creates_dispute(
-    graph_db_path, fake_pipeline, cust001_context
+    graph_db_path, fake_pipeline, cust001_context, fake_nemo
 ):
     supervisor_reply = '{"route": "DISPUTE", "confidence": 0.9, "reason": "unrecognized txn"}'
     llm = StubLLMClient([supervisor_reply, supervisor_reply])
-    graph = build_graph(llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path)
+    graph = build_graph(
+        llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path, nemo=fake_nemo
+    )
     config = run_config("SESS-DISPUTE-REJECT", cust001_context)
 
     graph.invoke(
@@ -109,10 +117,12 @@ def test_dispute_workflow_rejection_never_creates_dispute(
 
 
 def test_customer_only_ever_sees_own_transactions_in_dispute_flow(
-    graph_db_path, fake_pipeline, cust002_context
+    graph_db_path, fake_pipeline, cust002_context, fake_nemo
 ):
     llm = StubLLMClient(['{"route": "DISPUTE", "confidence": 0.9, "reason": "unrecognized txn"}'])
-    graph = build_graph(llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path)
+    graph = build_graph(
+        llm=llm, enterprise_pipeline=fake_pipeline, db_path=graph_db_path, nemo=fake_nemo
+    )
     config = run_config("SESS-CUST2", cust002_context)
 
     result = graph.invoke(

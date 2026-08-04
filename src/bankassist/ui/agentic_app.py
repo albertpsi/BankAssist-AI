@@ -29,16 +29,26 @@ BASE_URL = settings.api_base_url.rstrip("/")
 # real ExecutionEvents, never hard-coded per query.
 GRAPH_NODES: list[tuple[str, str]] = [
     ("user", "User Request"),
+    # --- Lab 5: guarded input boundary ---
+    ("input_validation", "Input Validation"),
+    ("nemo_input_rail", "NeMo Input Guardrail"),
     ("supervisor", "Supervisor Agent"),
     ("policy_agent", "Policy Agent"),
     ("banking_agent", "Banking Agent"),
     ("dispute_agent", "Dispute Agent"),
+    ("banking_agent_authorization", "Authorization"),
+    ("dispute_authorization", "Authorization"),
+    ("ownership_check", "Ownership"),
     ("enterprise_rag", "Enterprise RAG"),
     ("get_recent_transactions", "get_recent_transactions"),
     ("get_transaction_details", "get_transaction_details"),
     ("check_dispute_eligibility", "check_dispute_eligibility"),
     ("human_approval", "Human Approval"),
+    ("dispute_mutation_guard", "Financial Mutation Guard"),
     ("create_dispute", "create_dispute"),
+    # --- Lab 5: guarded output boundary ---
+    ("nemo_output_rail", "NeMo Output Guardrail"),
+    ("output_protection", "PII / Secret Protection"),
     ("final_response", "Final Response"),
 ]
 
@@ -68,21 +78,30 @@ def _build_graphviz(events: list[dict[str, Any]]) -> str:
         lines.append(f'"{node_id}" [label="{label}{suffix}", fillcolor="{color}"];')
 
     edges = [
-        ("user", "supervisor"),
+        ("user", "input_validation"),
+        ("input_validation", "nemo_input_rail"),
+        ("nemo_input_rail", "supervisor"),
         ("supervisor", "policy_agent"),
         ("supervisor", "banking_agent"),
         ("supervisor", "dispute_agent"),
+        ("banking_agent", "banking_agent_authorization"),
+        ("dispute_agent", "dispute_authorization"),
+        ("dispute_agent", "ownership_check"),
         ("policy_agent", "enterprise_rag"),
         ("dispute_agent", "enterprise_rag"),
-        ("banking_agent", "get_recent_transactions"),
+        ("banking_agent_authorization", "get_recent_transactions"),
         ("dispute_agent", "get_recent_transactions"),
-        ("dispute_agent", "get_transaction_details"),
+        ("ownership_check", "get_transaction_details"),
         ("dispute_agent", "check_dispute_eligibility"),
+        ("dispute_authorization", "human_approval"),
         ("check_dispute_eligibility", "human_approval"),
-        ("human_approval", "create_dispute"),
-        ("enterprise_rag", "final_response"),
-        ("get_recent_transactions", "final_response"),
-        ("create_dispute", "final_response"),
+        ("human_approval", "dispute_mutation_guard"),
+        ("dispute_mutation_guard", "create_dispute"),
+        ("enterprise_rag", "nemo_output_rail"),
+        ("get_recent_transactions", "nemo_output_rail"),
+        ("create_dispute", "nemo_output_rail"),
+        ("nemo_output_rail", "output_protection"),
+        ("output_protection", "final_response"),
     ]
     for src, dst in edges:
         lines.append(f'"{src}" -> "{dst}";')
@@ -128,7 +147,10 @@ def _resume(approved: bool) -> dict[str, Any]:
 
 def _render_login() -> None:
     st.title("BankAssist AI — Agentic Assistant")
-    st.caption("Lab 4: Supervisor → Policy / Banking / Dispute agents, LangGraph-orchestrated.")
+    st.caption(
+        "Lab 4: Supervisor → Policy / Banking / Dispute agents, LangGraph-orchestrated. "
+        "Lab 5: NeMo AI-semantic guardrails + deterministic security boundary added."
+    )
     st.subheader("Sign in")
     with st.form("login"):
         username = st.text_input("Username", value="customer1")

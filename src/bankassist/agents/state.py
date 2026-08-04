@@ -48,7 +48,20 @@ class BankAssistState(TypedDict, total=False):
     pending_action: dict[str, Any] | None
     approval_required: bool
     approval_status: Literal["approved", "rejected"] | None
+    # Lab 5 replay guard (FR-31 extension): set True the moment an approval is
+    # consumed by create_dispute_node/cancel_dispute_node, so a second resume on the
+    # same thread can never re-trigger the mutation even if LangGraph's own
+    # "no pending interrupt" check were ever bypassed.
+    pending_action_consumed: bool
 
     execution_events: Annotated[list[ExecutionEvent], operator.add]
 
     final_answer: str | None
+
+    # Lab 5: routing signal for the input-guardrail nodes, distinct from
+    # `final_answer`. `final_answer` is per-turn but only reset by `supervisor_node`,
+    # which runs *after* the guardrail nodes — using it directly as a "blocked this
+    # turn" flag would misread a *previous* turn's completed answer as a fresh
+    # block. This field is reset by `input_validation_node` itself, the first node
+    # of every turn, so it never carries state across turns.
+    guardrail_blocked: bool

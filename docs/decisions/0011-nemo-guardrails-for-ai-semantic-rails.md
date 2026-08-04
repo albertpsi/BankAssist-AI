@@ -1,0 +1,135 @@
+# ADR-0011 — NeMo Guardrails for AI-semantic input/output rails, superseding ADR-0003 for that scope only
+
+**Status:** Accepted
+**Date:** 2026-08-04
+**Relates to:** [ADR-0003](0003-custom-guardrail-engine.md) (superseded, scoped),
+[ADR-0009](0009-langgraph-agent-orchestration.md) (LangGraph orchestration),
+[ADR-0010](0010-local-jwt-auth-and-rbac.md) (auth/RBAC — unchanged, reused)
+
+## Context
+
+ADR-0003 (Lab 1 planning stage) chose a fully custom, deterministic-first guardrail
+engine and explicitly rejected NeMo Guardrails, reasoning that "explaining a DSL costs
+more than the rails themselves" for a system that was still small.
+
+By Lab 5, the requirement changed: the brief explicitly asks the implementation to
+*demonstrate* an enterprise AI-semantic guardrail architecture — prompt injection,
+jailbreak, and system-prompt-extraction detection — using an established framework
+where one adds real value, while keeping every application-security control
+(authentication, RBAC, ownership, tool authorization, HITL, redaction, masking)
+deterministic and application-owned, independent of any LLM's judgement. ADR-0003's
+reasoning was correct for the system's size at the time; it is revisited here because
+the requirement itself changed, not because the original reasoning was wrong.
+
+## Decision
+
+Adopt **NeMo Guardrails 0.23.0** for exactly two AI-semantic checks, and nothing else:
+
+- **Input rail** — one "self check input" flow classifying a user message as
+  prompt-injection/jailbreak, system-prompt-extraction, or role/tool-manipulation
+  intent (`src/bankassist/guardrails/nemo_config/input_rail.yml`).
+- **Output rail** — the same mechanism, pointed at a second, independent config,
+  classifying an already-generated agent answer for leaked instructions, an implied
+  privilege change, or prohibited content
+  (`src/bankassist/guardrails/nemo_config/output_rail.yml`).
+
+Both are wrapped by `src/bankassist/guardrails/nemo_adapter.py`, the **only** module
+that imports `nemoguardrails`. It normalizes every rail verdict into the application's
+own `GuardrailResult` (`src/bankassist/guardrails/models.py`) before anything else in
+the codebase ever sees it — NeMo's own types never reach `BankAssistState`, the API
+schemas, execution events, or the Streamlit UI. This keeps ADR-0003's original design
+goal (a stable, owned verdict shape) intact even though the classification itself now
+runs through a third-party framework.
+
+**Everything ADR-0003 covered that is not AI-semantic remains exactly as ADR-0003
+specified**: deterministic regex/shape checks (`input_validation.py`), the tool
+authorization boundary (`tool_authorization.py`), secret redaction (`redaction.py`),
+and PII/financial-data masking (`masking.py`). ADR-0003 is superseded **only** for the
+injection/jailbreak/system-prompt-extraction/output-safety classification it originally
+proposed to hand-roll — its rejection of NeMo for *that* narrow scope is what this ADR
+reverses; its case for deterministic controls everywhere else is reaffirmed, not
+revisited.
+
+Ordering is deliberate and asymmetric (Lab 5 §1/§3): deterministic input-shape
+validation (empty/oversized/malformed) runs **before** the NeMo input rail, so a
+request that can already be rejected cheaply never spends an LLM call. On the output
+side, the NeMo semantic rail runs **before** deterministic secret/PII redaction — a
+known-shape secret (JWT, API key, card pattern) must never leave the system even if
+NeMo's classification is wrong, so the deterministic pass is the last word, not NeMo.
+
+## Model / credential
+
+NeMo calls the project's existing OpenAI credential and existing economical tier
+(`Settings.llm_model_fast`, currently `gpt-4o-mini`) via `ChatOpenAI` — no second LLM
+provider, no second API key, no parallel model-configuration system. `langchain-openai`
+was added as the thinnest adapter needed to let NeMo consume that existing credential;
+it is not a new provider abstraction.
+
+## Alternatives considered
+
+**Keep ADR-0003's fully custom regex-only engine for injection/jailbreak.** Rejected
+for this scope: paraphrased jailbreak/injection attempts are exactly the class of
+input regex is weakest against, and the Lab 5 brief specifically calls for
+demonstrating a framework-based AI-semantic layer.
+
+**Route both rails through the project's own `LLMClient` with a hand-written prompt
+(no framework).** Considered, and closest to ADR-0003's original spirit. Rejected
+because it would not demonstrate the enterprise-framework pattern the lab explicitly
+asks for, and would leave the project re-deriving what NeMo already provides (a
+configurable rails engine with a documented verdict shape) with no material benefit
+over just importing it.
+
+**NeMo's built-in "self check output" flow for the output rail**, wired through its
+own `bot_response`/`bot_message` context variables. Attempted first; a spike showed
+that flow expects NeMo's own main generation step to have produced the response,
+whereas BankAssist's answer is generated by LangGraph agents outside NeMo entirely.
+Rather than hand-writing a custom Colang action to bridge that gap (out of scope per
+"no large Colang system"), the output rail reuses the same proven "self check input"
+mechanism against a second, independent `LLMRails` instance — functionally identical
+LLM-judged classification, with the wiring detail contained entirely inside
+`nemo_adapter.py`. Documented here as the one concrete implementation learning from
+this integration.
+
+## New dependencies
+
+- `nemoguardrails==0.23.0` — rail engine. Verified compatible with Python 3.13 and the
+  existing dependency set before adoption (clean resolve, no version conflicts).
+- `langchain-openai>=1.4.0` — lets NeMo call the existing OpenAI credential.
+- Transitive: installing `nemoguardrails` downgraded `pandas` from 3.0.5 to 2.3.3 (a
+  transitive dependency of `fastembed`, which NeMo pulls in for embedding-based rails
+  BankAssist does not use). `pandas` is not a direct BankAssist dependency and no code
+  or test in this repository imports it directly — checked, no conflict found. Recorded
+  here as an implementation detail, not treated as an architectural concern.
+
+## Consequences
+
+**Makes easy:** a real, configurable AI-semantic safety layer with less hand-rolled
+detection code than a fully custom engine would need for the same coverage; a clean
+adapter boundary means NeMo can be swapped later without touching agents, tools, or the
+API; deterministic tests never depend on NeMo's real classification (a fake LangChain
+LLM is injected via `llm_override`, verified working before any test was written on
+top of it).
+
+**Makes hard / accepted limits:** every guarded turn now costs at least one extra LLM
+call (input rail) and, when output classification fires, a second (output rail) —
+latency/cost the fully-custom regex approach would not have had. The rail set is
+deliberately small (one flow per direction) rather than a rich Colang dialogue system,
+so nuanced multi-step social-engineering attempts are not modeled — deterministic
+controls (auth, RBAC, ownership, HITL, redaction, masking) are what actually prevent
+harm even if a rail misses; NeMo is defense in depth for the semantic layer only, never
+the security boundary itself.
+
+**Placement relative to deterministic controls:** unchanged from ADR-0003's core
+principle — NeMo Guardrails classifies; it does not authenticate, authorize, check
+ownership, gate `create_dispute`, or decide what leaves the system. Those are, and
+remain, plain deterministic application code, testable without a live model
+(Lab 5 §7/§13).
+
+## Revisit when
+
+NeMo's output-rail wiring gap (see Alternatives) is resolved in a future NeMo release
+in a way that lets BankAssist's LangGraph-generated answers flow through its native
+"self check output" mechanism directly — at that point the two-`LLMRails`-instance
+workaround in `nemo_adapter.py` should be simplified. Also revisit if rail-call latency
+becomes a demonstrated problem, at which point a cheaper pre-filter (deterministic
+heuristic before the NeMo call) would be the next incremental step, not a rewrite.

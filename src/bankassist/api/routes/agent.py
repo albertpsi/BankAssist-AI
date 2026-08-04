@@ -24,6 +24,7 @@ from bankassist.api.schemas import (
 )
 from bankassist.config import Settings
 from bankassist.errors import AuthorizationError, NoPendingApprovalError
+from bankassist.guardrails.nemo_adapter import NemoGuardrailsAdapter
 from bankassist.llm.factory import build_llm_client
 from bankassist.security.context import SecurityContext
 
@@ -45,8 +46,12 @@ def get_agent_graph(request: Request) -> Any:
     tracer = request.app.state.tracer
     llm = build_llm_client(settings, tracer)
     pipeline = get_enterprise_pipeline(request)
+    nemo = getattr(request.app.state, "nemo_guardrails", None) or NemoGuardrailsAdapter(settings)
+    request.app.state.nemo_guardrails = nemo
 
-    graph = build_graph(llm=llm, enterprise_pipeline=pipeline, db_path=settings.banking_db_path)
+    graph = build_graph(
+        llm=llm, enterprise_pipeline=pipeline, db_path=settings.banking_db_path, nemo=nemo
+    )
     request.app.state.agent_graph = graph
     return graph
 
@@ -139,11 +144,12 @@ def chat(
             execution_events=_events_schema(events),
         )
 
+    blocked = result.get("current_agent") == "guardrail"
     return AgentChatResponse(
         answer=result.get("final_answer") or "",
         agent=result.get("current_agent") or "supervisor",
         session_id=payload.session_id,
-        status="completed",
+        status="blocked" if blocked else "completed",
         approval_required=False,
         sources=result.get("retrieved_sources") or [],
         execution_events=_events_schema(events),

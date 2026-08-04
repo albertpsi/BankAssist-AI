@@ -161,7 +161,7 @@ class AgentChatResponse(BaseModel):
     answer: str
     agent: str
     session_id: str
-    status: Literal["completed", "waiting_approval", "failed"]
+    status: Literal["completed", "waiting_approval", "failed", "blocked"]
     approval_required: bool = False
     sources: list[str] = Field(default_factory=list)
     execution_events: list[ExecutionEventSchema] = Field(default_factory=list)
