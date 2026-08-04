@@ -50,8 +50,10 @@ data/bm25_index/
 data/cache/
 
 # ---- Model caches (large, re-downloadable) ----
+# Anchored to repo root (leading /) so this doesn't also match
+# src/bankassist/rag/models/, which is application code, not a cache.
 .cache/
-models/
+/models/
 .sentence_transformers/
 .huggingface/
 

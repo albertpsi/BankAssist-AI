@@ -15,6 +15,8 @@ import hashlib
 import math
 
 from bankassist.rag.models import DocumentMetadata, RetrievedChunk, VectorRecord
+from bankassist.rag.models.rerank_result import RerankEntry, RerankResult
+from bankassist.rag.models.retrieval_result import RRFResult
 
 
 class StubEmbedder:
@@ -107,6 +109,45 @@ class InMemoryVectorStore:
 
     def count(self) -> int:
         return len(self.records)
+
+
+class StubReranker:
+    """A ``Reranker`` double that never loads the real cross-encoder model.
+
+    Scores are scripted per ``(text, chunk_index)`` key so a test controls the
+    post-rerank ordering exactly, the same "script the response" pattern
+    ``StubLLMClient`` already establishes.
+    """
+
+    def __init__(self, scores: dict[tuple[str, int], float] | None = None) -> None:
+        self._scores = scores or {}
+        self.queries: list[str] = []
+        self.calls: list[int] = []  # candidate counts, for assertions
+
+    def execute(self, query: str, fused: RRFResult, top_n: int = 5) -> RerankResult:
+        self.queries.append(query)
+        self.calls.append(len(fused.entries))
+        pre_ranked = list(enumerate(fused.entries, start=1))
+
+        def score_of(pair: tuple[int, object]) -> float:
+            _, entry = pair
+            return self._scores.get((entry.text, entry.chunk_index), entry.rrf_score)
+
+        post_ranked = sorted(pre_ranked, key=score_of, reverse=True)[:top_n]
+        return RerankResult(
+            entries=[
+                RerankEntry(
+                    text=entry.text,
+                    metadata=entry.metadata,
+                    chunk_index=entry.chunk_index,
+                    pre_rank=pre_rank,
+                    pre_score=entry.rrf_score,
+                    post_rank=post_rank,
+                    post_score=score_of((pre_rank, entry)),
+                )
+                for post_rank, (pre_rank, entry) in enumerate(post_ranked, start=1)
+            ]
+        )
 
 
 def _cosine(left: list[float], right: list[float]) -> float:

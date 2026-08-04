@@ -17,7 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from bankassist import __version__
 from bankassist.errors import ConfigurationError
 
-ModelTier = Literal["fast", "strong"]
+ModelTier = Literal["fast", "strong", "classifier"]
 
 
 class Settings(BaseSettings):
@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # when unset, the fast model is used everywhere.
     llm_model_fast: str = "gpt-4o-mini"
     llm_model_strong: str | None = None
+    # Query classification (Lab 3, FR-L3-3.1). A distinct tier, not folded into
+    # "fast", so the lab-mandated model id is configuration on its own line.
+    llm_model_classifier: str = "gpt-4.1-mini"
 
     llm_max_tokens: int = Field(default=4096, gt=0)
     llm_timeout_seconds: float = Field(default=60.0, gt=0)
@@ -71,6 +74,14 @@ class Settings(BaseSettings):
 
     # --- Retrieval (Lab 2) ---
     retrieval_top_k: int = Field(default=5, gt=0)
+
+    # --- Enterprise retrieval (Lab 3) ---
+    retrieval_vector_top_k_enterprise: int = Field(default=20, gt=0)
+    retrieval_bm25_top_k: int = Field(default=20, gt=0)
+    rrf_k: int = Field(default=60, gt=0)
+    rerank_candidate_count: int = Field(default=10, gt=0)
+    rerank_top_n: int = Field(default=5, gt=0)
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # --- Vector store (Lab 2, ADR-0007) ---
     # Deliberately *not* validated here. Unlike the OpenAI key, this credential is
@@ -160,6 +171,8 @@ class Settings(BaseSettings):
         """Resolve a tier name to a concrete model id."""
         if tier == "strong":
             return self.llm_model_strong or self.llm_model_fast
+        if tier == "classifier":
+            return self.llm_model_classifier
         return self.llm_model_fast
 
 

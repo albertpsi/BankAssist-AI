@@ -72,6 +72,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(rag.router)
+    # FR-L3-12.1 names `/api/v1/rag/query`; Lab 2's unversioned `/rag/query` stays
+    # working unchanged (NFR-L3-4) — the same route is mounted a second time
+    # under the version prefix rather than replaced (lab-03 spec §6.2).
+    app.include_router(rag.router, prefix="/api/v1")
 
     @app.middleware("http")
     async def trace_and_log(

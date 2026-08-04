@@ -1,8 +1,17 @@
 # Implementation Plan
 
-**Status:** Approved with amendments — **Labs 1–2 complete; Labs 3–7 not yet authorized**
-**Version:** 0.3
-**Date:** 2026-08-03
+**Status:** Approved with amendments — **Labs 1–3 complete; Labs 4–7 not yet authorized**
+**Version:** 0.4
+**Date:** 2026-08-04
+
+> **Amendment log — v0.4.** Lab 3 implemented against its own brief, restating the Lab 3
+> section below: classification labels are Policy/FAQ/Procedure/Eligibility/Definition/
+> Comparison/Unknown (not policy/account/dispute/general/out-of-domain); the reranker open
+> item from ADR-0007 is resolved by [ADR-0008](../decisions/0008-reranker-dependency.md)
+> (`sentence-transformers` reinstated, scoped to reranking); `tiktoken` is dropped in favor
+> of a character-based token estimate; inline citation markers and citation validation are
+> deferred past Lab 3 (document-level citations only, matching Lab 2). Full detail:
+> [`docs/requirements/lab-03-enterprise-rag.md`](../requirements/lab-03-enterprise-rag.md).
 
 > **Amendment log — v0.3.** Lab 2 restated against its lab brief: Pinecone replaces
 > ChromaDB, `text-embedding-3-small` replaces local MiniLM embeddings
@@ -177,52 +186,43 @@ unauthorized transaction, KYC documents).
 
 ---
 
-## Lab 3 — Enterprise Multi-Stage RAG
+## Lab 3 — Enterprise Multi-Stage RAG ✅ Implemented 2026-08-04
 
-**Objective:** Query classification → query rewrite where required → dense retrieval + BM25
-→ Reciprocal Rank Fusion → metadata filtering → cross-encoder reranking → context
-construction → generation → citation validation.
+**Objective:** Query classification → query rewrite → hybrid retrieval (dense + BM25) →
+metadata filtering → Reciprocal Rank Fusion → cross-encoder reranking → prompt construction
+→ generation → document-level citations.
 
-**Retained unchanged at the approval gate**, including the requirement that Lab 2's basic
-RAG mode remains selectable so a Basic vs Enterprise comparison can be demonstrated (FR-3.8).
+**Retained unchanged**, as required: Lab 2's basic RAG mode remains selectable so a Basic
+vs Enterprise comparison can be demonstrated (FR-3.8) — `BasicRagPipeline` was moved to
+`rag/pipeline/basic_pipeline.py` unmodified (mechanical import-path move only).
 
-**Estimated effort:** ~4 h
+**Actual effort:** ~1 session.
 
-### Steps
+### What was built
 
-1. **`RetrievalPipeline` protocol** — extract the interface; make `basic` and `enterprise`
-   selectable by config. Lab 2's pipeline survives as `basic` (FR-3.8).
-2. **Query classifier** — economical-tier structured call returning one of policy / account /
-   dispute / general / out-of-domain, plus a deterministic keyword fallback so routing is
-   testable offline.
-3. **Query rewriter** — pronoun resolution against history, banking-abbreviation expansion
-   (APR, ATM, ACH, POS), optional multi-query variants.
-4. **BM25 index** — build from the same chunks at startup; `rank_bm25` BM25Okapi.
-5. **Hybrid retrieval + RRF fusion** — dense top-20 and sparse top-20, fused with
-   reciprocal rank fusion (k=60). Pure function, directly unit-tested.
-6. **Metadata filtering** — category, product, and effective-date filters applied
-   post-fusion.
-7. **Cross-encoder reranker** — `ms-marco-MiniLM-L-6-v2` over the fused candidates, top-5.
-8. **Context builder** — token-budgeted assembly with `tiktoken`, dedup, per-chunk source
-   ids attached.
-9. **Citation validation** — deterministic check that every emitted `[doc_id#chunk]`
-   resolves to a chunk retrieved for *this* request.
-10. **Stage-level tracing** — each of the six stages emits a span with its own latency and
-    intermediate output. This is what makes the pipeline demonstrable rather than assertable.
-11. **Comparison harness** — `scripts/compare_retrieval.py`: run a query set through both
-    modes, output a side-by-side table.
-12. **Tests** — RRF maths, filter narrowing, rerank ordering and truncation, citation
-    resolution (including a deliberately fabricated citation), classifier routing,
-    rewriter behaviour.
+Ten single-responsibility stage classes under `src/bankassist/rag/stages/`
+(`classifier.py`, `query_rewriter.py`, `vector_retriever.py`, `bm25_retriever.py`,
+`hybrid_retriever.py`, `metadata_filter.py`, `rrf_ranker.py`, `reranker.py`,
+`prompt_builder.py`, `generator.py`), each exposing one `execute()` method over typed
+Pydantic request/result objects (`rag/models/`), orchestrated by
+`EnterpriseRagPipeline` (`rag/pipeline/enterprise_pipeline.py`), which contains no
+business logic of its own. Full detail, including the three resolved deviations from this
+plan's original sketch (classification labels, dropped `tiktoken`, deferred citation
+validation — see the v0.4 amendment above) and the reranker dependency decision:
+[`docs/requirements/lab-03-enterprise-rag.md`](../requirements/lab-03-enterprise-rag.md),
+[ADR-0008](../decisions/0008-reranker-dependency.md).
 
 ### Exit criteria
-AC-3.1 – AC-3.5. Specifically: a keyword-exact query that basic mode misses and hybrid mode
-retrieves, with both results recorded.
+AC-L3-1 – AC-L3-13 (see the Lab 3 spec §8). Met: a BM25/hybrid demo case retrieves an
+exact-keyword chunk regardless of the deterministic-hash test embedding's ranking,
+recorded in `tests/unit/test_rag_comparison.py`.
 
 ### Evidence
-The stage-by-stage trace of one query; the basic-vs-enterprise comparison table; a
-before/after reranking ordering for a query set; a screenshot of a cited answer with the
-citation-validation result.
+Structured per-stage logs on a single request; the basic-vs-enterprise comparison test;
+before/after reranking ordering (`RerankResult.entries[].pre_rank`/`post_rank`); the
+Streamlit mode selector; `POST /rag/query` and `POST /api/v1/rag/query` both serving
+`mode: "enterprise"` with citations. Screenshots to be captured per the lab brief's
+evidence checklist once the app is run against live credentials.
 
 ---
 
@@ -471,7 +471,7 @@ the lab evidence capture.
 | Small model underperforms on a classification task | Iterate the prompt first; the stronger model stays judge-only. If a task genuinely needs it, record that as a finding rather than silently upgrading the default tier |
 | ~~`chromadb` fails to install on Python 3.13~~ — retired at v0.3; Chroma is no longer in the stack | — |
 | Pinecone credential not provisioned when Lab 2 reaches the vector-store milestone | Flagged at the Lab 2 approval gate; milestones M1–M3 (corpus, chunking, embeddings) run without it |
-| Lab 3's cross-encoder reranker assumed `sentence-transformers`, which ADR-0007 removes | Open item, recorded in ADR-0007's consequences. Decide the reranking approach at the start of Lab 3, not by discovering it mid-lab |
+| ~~Lab 3's cross-encoder reranker assumed `sentence-transformers`, which ADR-0007 removes~~ — resolved by [ADR-0008](../decisions/0008-reranker-dependency.md): reinstated, scoped to reranking only | — |
 | Tracer retrofitted too late, forcing rework across every layer | Tracer interface lands in Lab 2 as a stub; every layer calls it from the start |
 | Guardrails over-block and the demo looks broken | Build the allow-set corpus *before* the classifier; treat over-blocking as a test failure |
 | Prompt caching silently never fires | Assert `cache_read_input_tokens > 0`; the audit in step 1 is a prerequisite, not a cleanup |
