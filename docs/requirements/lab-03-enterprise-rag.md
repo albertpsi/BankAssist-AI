@@ -375,9 +375,20 @@ uniformly.
 | `retrieval_vector_top_k_enterprise` | `20` | Vector leg of hybrid retrieval (FR-L3-5.1) |
 | `retrieval_bm25_top_k` | `20` | BM25 leg (FR-L3-5.2) |
 | `rrf_k` | `60` | RRF constant (FR-L3-7.1) |
-| `rerank_candidate_count` | `10` | Fused candidates entering rerank (FR-L3-8.1) |
-| `rerank_top_n` | `5` | Final reranked count (FR-L3-8.1) |
+| `rerank_candidate_count` | `20` (was `10`) | Fused candidates entering rerank (FR-L3-8.1) |
+| `rerank_top_n` | `8` (was `5`) | Final reranked count (FR-L3-8.1) |
 | `reranker_model` | `"cross-encoder/ms-marco-MiniLM-L-6-v2"` | ADR-0008 |
+
+**Amended 2026-08-04** (found while validating Lab 4's Policy Agent, which calls this
+pipeline unmodified): the cross-encoder reranker can rank a terse, correct, list-formatted
+chunk (e.g. the KYC "List of OVDs" chunk) below denser boilerplate chunks from the same
+document, even though RRF fusion (vector+BM25) ranked it reasonably. `rerank_candidate_count`
+10→20 stopped it being truncated before reaching the reranker at all; `CrossEncoderReranker`
+now reciprocal-rank-fuses the RRF pre-rank with the cross-encoder rank (`reranker.py`,
+`fuse_ranks`) instead of trusting the cross-encoder score alone, and `rerank_top_n` 5→8
+gives that fused ranking room. See the docstring in `rag/stages/reranker.py` for the full
+investigation. A markdown-corpus cleanup (fixing PDF-extraction artifacts and chunk
+boundaries) would be a more durable fix and remains a suggested follow-up, not done here.
 
 Extending `ModelTier` from `Literal["fast", "strong"]` to `Literal["fast", "strong",
 "classifier"]` (and `model_for_tier` accordingly) is the one small, additive touch to the

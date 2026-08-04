@@ -79,8 +79,21 @@ class Settings(BaseSettings):
     retrieval_vector_top_k_enterprise: int = Field(default=20, gt=0)
     retrieval_bm25_top_k: int = Field(default=20, gt=0)
     rrf_k: int = Field(default=60, gt=0)
-    rerank_candidate_count: int = Field(default=10, gt=0)
-    rerank_top_n: int = Field(default=5, gt=0)
+    # 20, not 10: RRF penalizes a chunk that scores well in only one retrieval leg
+    # (e.g. a strong vector match with no BM25 keyword overlap) relative to a
+    # weaker chunk both legs agree on. With two 20-item legs the fused list can
+    # run 30+ deep, and a single-leg-strong, genuinely-correct chunk can land
+    # right at (or just past) a top-10 cut — observed in practice with the KYC
+    # OVD-document-list chunk, which BM25 never surfaced (roman-numeral list
+    # items, the acronym "OVD") but vector search ranked at position ~6. Cutting
+    # at 20 gives that margin without meaningfully increasing reranker cost —
+    # the cross-encoder rerank stage is what actually picks the final top_n.
+    rerank_candidate_count: int = Field(default=20, gt=0)
+    # 8, not 5: with rank-fused selection (reranker.py) a chunk two retrieval
+    # legs disagree on can still need a handful of ranks of margin over a
+    # cross-encoder-only ordering. Verified empirically against the KYC
+    # OVD-document-list case, which needed this before it survived selection.
+    rerank_top_n: int = Field(default=8, gt=0)
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # --- Vector store (Lab 2, ADR-0007) ---
@@ -101,6 +114,15 @@ class Settings(BaseSettings):
     # --- Observability ---
     log_level: str = "INFO"
     tracing_enabled: bool = True
+
+    # --- Synthetic banking data (Lab 4) ---
+    banking_db_path: Path = Path("./data/banking.db")
+
+    # --- Local auth + RBAC (Lab 4, ADR-0010) ---
+    # Demo signing secret. Never a production secret — this is a teaching artifact.
+    jwt_secret: SecretStr = SecretStr("dev-only-insecure-secret-change-me")
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_minutes: int = Field(default=30, gt=0)
 
     @model_validator(mode="after")
     def _require_credential(self) -> Settings:

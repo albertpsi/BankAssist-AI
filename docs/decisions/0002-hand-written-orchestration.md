@@ -1,6 +1,6 @@
 # ADR-0002 — Hand-written agent orchestration over a framework
 
-**Status:** Proposed
+**Status:** Superseded by [ADR-0009](0009-langgraph-agent-orchestration.md) (2026-08-04)
 **Date:** 2026-08-03
 
 ## Context
@@ -59,3 +59,9 @@ hop is visible.
 The agent graph grows beyond ~5 agents or needs conditional cycles, durable resumability
 becomes a requirement, or the hand-written loop starts accumulating framework-shaped
 complexity of its own.
+
+**Update 2026-08-04:** Lab 4 introduces exactly the trigger condition above — the
+dispute workflow requires genuine human-in-the-loop suspend/resume, plus checkpointed
+multi-turn state. See [ADR-0009](0009-langgraph-agent-orchestration.md), which adopts
+LangGraph scoped strictly to orchestration; all business logic named in this ADR's
+"Makes hard" section stays first-party.

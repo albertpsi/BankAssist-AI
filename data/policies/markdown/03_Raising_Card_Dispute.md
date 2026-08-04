@@ -34,31 +34,12 @@ The goods supplied/serviced by the merchant are not as described: The item(s) pu
 conform to what was agreed to have been supplied by the merchant or was/were defective. (Please specify what good(s) or
 service(s) were expected & what were actually delivered. Enclose any documentation that supports your claim. Please return
 the goods to the merchant & provide proof of returned goods, copy of correspondence with merchant, terms & conditions
-of
-contract/delivery
-and
-nature
-of
-defect
-etc).
+of contract/delivery and nature of defect etc).
 ______________________________________________________________________________________________________________
 ______________________________________________________________________________________________________________
 
-## Transaction
-
-## Date
-
-## Merchant/Shop/Establishment
-
-## Name/Atm Location
-
-## Transaction
-
-AMOUNT (Rs. )
-
-## Disputed
-
-AMOUNT (Rs. )
+Form fields: Transaction Date | Merchant/Shop/Establishment Name/ATM Location |
+Transaction Amount (Rs.) | Disputed Amount (Rs.)
 
 7.
 The transaction amount was Rs. ________ (provide amount & currency), but I was billed for Rs. __________ (provide amount

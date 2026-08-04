@@ -3,16 +3,10 @@
 > Source: Official State Bank of India - <https://bank.sbi/documents/17826/9529227/250122-KYC+Policy+Abridged+Version+03.01.2021.pdf/f236c452-e54a-9c3c-1227-42be18372ef0?t=1643115443956>  
 > Retrieved: 2026-08-03
 
-1 | P a g e K Y C P o l i c y : A b r i d g e d V e r s i o n
-
 ## State Bank Of India
 
-## Policy
+## Policy on Know Your Customer (KYC) Standards, Anti-Money Laundering (AML) and Combating Financing of Terrorism (CFT) Measures
 
-ON
-Know Your Customer (KYC) Standards,
-Anti-Money Laundering (AML) and Combating
-Financing of Terrorism (CFT) Measures
 Know Your Customer Department
 R & DB Operations
 Corporate Centre
@@ -20,7 +14,6 @@ Mumbai
 (Updated as on 31.03.2021)
 (Abridged Version)
 
-2 | P a g e K Y C P o l i c y : A b r i d g e d V e r s i o n
 In terms of the provisions of Prevention of Money-Laundering Act, 2002 and the
 Prevention of Money-Laundering (Maintenance of Records) Rules, 2005, as
 amended from time to time by the Government of India as notified by the
@@ -36,13 +29,11 @@ issues.
 
 ### 1. OBJECTIVE, SCOPE AND APPLICATION
 
-### 1.1. The primary objective of the KYC, AML & CFT Policy of the Bank is to
-
+1.1. The primary objective of the KYC, AML & CFT Policy of the Bank is to
 prevent the Bank from being used, intentionally or unintentionally, by
 criminal elements for money laundering or financing of terrorism.
 
-### 1.2. The provisions of this Policy are applicable to all branches/offices of the
-
+1.2. The provisions of this Policy are applicable to all branches/offices of the
 Bank. These guidelines shall also apply to the branches and majority owned
 subsidiaries of the Bank which are located abroad, to the extent they are not
 contradictory to the local laws in the host country, provided that:
@@ -53,7 +44,7 @@ RBI and the host country regulators, branches abroad/overseas
 subsidiaries will be required to adopt the more stringent regulation of
 the two.
 
-### 2. KEY ELEMENTS OF THE POLICY:
+### 2. KEY ELEMENTS OF THE POLICY
 
 The KYC/AML/CFT Policy of the Bank contains the following key elements:
 (a) Customer Acceptance Policy (CAP).
@@ -61,70 +52,48 @@ The KYC/AML/CFT Policy of the Bank contains the following key elements:
 (c) Customer Identification Procedures (CIP); and
 (d) Monitoring of Transactions
 
-3 | P a g e K Y C P o l i c y : A b r i d g e d V e r s i o n
-
-### 3. CUSTOMER
-
-DUE
-
-## Diligence
-
-## Procedure
-
-IN
-
-## Case
-
-OF
-
-## Individuals:
+### 3. CUSTOMER DUE DILIGENCE PROCEDURE IN CASE OF INDIVIDUALS
 
 Branches/Business Units shall obtain the following from an individual while
 establishing an account-based relationship or while dealing with the
 individual who is a beneficial owner, authorized signatory or the power of
 attorney holder related to any legal entity:
+
 a) the Permanent Account Number or the equivalent e-document thereof
 or Form No. 60 as defined in Income-tax Rules, 1962 and
 b) Recent Photograph; and
 c) the Aadhaar number where,
-i.
-he is desirous of receiving any benefit or subsidy under any
+
+i. he is desirous of receiving any benefit or subsidy under any
 scheme notified under section 7 of the Aadhaar (Targeted
 Delivery of Financial and Other subsidies, Benefits and
 Services) Act, 2016 (18 of 2016); or
-ii.
-he decides to submit his Aadhaar number voluntarily for
+
+ii. he decides to submit his Aadhaar number voluntarily for
 identification purposes and consents to undergo authentication
-OR
-proof of possession of Aadhaar number or any Officially Valid
+
+OR proof of possession of Aadhaar number or any Officially Valid
 Document (OVD-shown below) or the equivalent e-document thereof
 containing the details of his identity and address and
+
 d) any such other documents including in respect of the nature of
 business and financial status of the customer, or the equivalent e-
 documents thereof as may be required the branches/Business Units, to
 create customer profile for the purpose of risk categorisation and
 transaction monitoring.
-List of OVDs:
-i.
-Passport,
-ii.
-the Driving License,
-iii.
-Proof of possession of Aadhaar Number,
-iv.
-the Voter's Identity Card issued by the Election Commission of India,
-v.
-Job Card issued by NREGA duly signed by an officer of the State
+
+#### List of Officially Valid Documents (OVD) accepted for KYC / customer identification
+
+i. Passport,
+ii. the Driving License,
+iii. Proof of possession of Aadhaar Number,
+iv. the Voter's Identity Card issued by the Election Commission of India,
+v. Job Card issued by NREGA duly signed by an officer of the State
 Government and
-vi.
-Letter issued by the National Population Register containing details of
+vi. Letter issued by the National Population Register containing details of
 name and address.
 
-4 | P a g e K Y C P o l i c y : A b r i d g e d V e r s i o n
-
-### 4. CUSTOMER DUE DILIGENCE PROCEDURE IN CASE OF NON-
-
-## Individuals
+### 4. CUSTOMER DUE DILIGENCE PROCEDURE IN CASE OF NON-INDIVIDUALS
 
 a. For opening accounts of non-individuals (entities), identification information
 of individuals, who are Proprietor(s) / Partner(s) / Beneficial Owner(s)
@@ -159,7 +128,6 @@ relating to secrecy in the banking transactions.
 (iv) Where the disclosure is made with the express or implied consent
 of the customer.
 
-5 | P a g e K Y C P o l i c y : A b r i d g e d V e r s i o n
 Further, KYC/AML/CFT Policy of the Bank covers various other aspects such as:
 a. Money Laundering and Terrorist Financing Risk Assessment.
 b. Enhanced due diligence.
