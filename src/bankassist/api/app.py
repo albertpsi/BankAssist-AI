@@ -15,7 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from bankassist.api.routes import health, rag
+from bankassist.api.routes import agent, auth, health, rag
 from bankassist.api.schemas import ErrorDetail, ErrorResponse
 from bankassist.config import Settings, get_settings
 from bankassist.context import get_trace_id, trace_context
@@ -76,6 +76,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # working unchanged (NFR-L3-4) — the same route is mounted a second time
     # under the version prefix rather than replaced (lab-03 spec §6.2).
     app.include_router(rag.router, prefix="/api/v1")
+    # Lab 4: local auth + multi-agent chat, both versioned-only (no Lab 2/3-style
+    # unversioned alias — there is no pre-Lab-4 contract to preserve here).
+    app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(agent.router, prefix="/api/v1")
 
     @app.middleware("http")
     async def trace_and_log(

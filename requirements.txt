@@ -31,6 +31,18 @@ ruff>=0.8.0
 rank-bm25>=0.2.2               # sparse (BM25) retrieval leg of hybrid search
 sentence-transformers>=3.0.0   # CrossEncoder reranker only — embeddings stay OpenAI (ADR-0007)
 
+# --- Multi-agent orchestration (Lab 4, ADR-0009) ---
+langgraph>=1.2.10              # StateGraph, conditional routing, checkpointing, interrupt/resume
+
+# --- Local auth + RBAC security foundation (Lab 4, ADR-0010) ---
+pyjwt>=2.13.0                  # JWT encode/verify for the login endpoint
+bcrypt>=4.1.0                  # password hashing (passlib's bcrypt wrapper is
+                                # incompatible with bcrypt>=4.1, so this is used directly)
+
+# --- Agent execution graph visualization (Lab 4, §21) ---
+graphviz>=0.20.0                # required by st.graphviz_chart(dot_string); renders
+                                 # client-side via dagre-d3, no system Graphviz binary needed
+
 # --- Added in later labs ---
 # (nothing pending)
 #

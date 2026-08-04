@@ -85,3 +85,91 @@ class EnterpriseRagQueryResponse(BaseModel):
     mode: Literal["enterprise"] = "enterprise"
     classification: EnterpriseClassificationSummary
     rewritten_question: str
+
+
+# --- Lab 4: local auth (ADR-0010) ---
+
+
+class LoginRequest(BaseModel):
+    """``POST /api/v1/auth/login`` request body (FR-22)."""
+
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class LoginResponse(BaseModel):
+    """``POST /api/v1/auth/login`` response body. Never echoes the password."""
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    role: str
+    customer_id: str | None = None
+
+
+# --- Lab 4: multi-agent chat (FR-19) ---
+
+MAX_MESSAGE_CHARS = 2000
+
+
+class ExecutionEventSchema(BaseModel):
+    """API projection of ``bankassist.execution_event.ExecutionEvent``."""
+
+    event_type: str
+    node_id: str
+    node_type: str
+    label: str
+    status: str
+    timestamp: str
+    summary: str
+
+
+class AgentChatRequest(BaseModel):
+    """``POST /api/v1/agent/chat`` request body (FR-19)."""
+
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    customer_id: str | None = None
+    session_id: str = Field(min_length=1, max_length=100)
+
+    @field_validator("message")
+    @classmethod
+    def _reject_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("message must not be blank")
+        return stripped
+
+
+class TransactionOption(BaseModel):
+    """One clickable choice when the Dispute Agent is asking which transaction.
+
+    Deliberately narrow: only what the UI needs to render a button and echo an
+    unambiguous follow-up message — not the full ``Transaction`` tool model.
+    """
+
+    transaction_id: str
+    merchant: str
+    amount_rupees: float
+    txn_date: str
+
+
+class AgentChatResponse(BaseModel):
+    """``POST /api/v1/agent/chat`` response body (FR-19).
+
+    Never contains chain-of-thought, hidden prompts, or raw LangGraph state.
+    """
+
+    answer: str
+    agent: str
+    session_id: str
+    status: Literal["completed", "waiting_approval", "failed"]
+    approval_required: bool = False
+    sources: list[str] = Field(default_factory=list)
+    execution_events: list[ExecutionEventSchema] = Field(default_factory=list)
+    available_transactions: list[TransactionOption] | None = None
+
+
+class AgentResumeRequest(BaseModel):
+    """Resumes an interrupted thread with a human approval decision (FR-20)."""
+
+    session_id: str = Field(min_length=1, max_length=100)
+    approved: bool

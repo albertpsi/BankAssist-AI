@@ -80,3 +80,36 @@ class VectorStoreError(BankAssistError):
 
     code = "vector_store_error"
     http_status = 502
+
+
+class AuthenticationError(BankAssistError):
+    """Credentials were missing, invalid, or the token was expired/tampered.
+
+    Deliberately generic (ADR-0010, FR-22): never reveals whether the username or
+    the password was wrong.
+    """
+
+    code = "authentication_error"
+    http_status = 401
+
+
+class AuthorizationError(BankAssistError):
+    """The authenticated identity lacks the permission or ownership for this action.
+
+    Raised before any sensitive tool executes (FR-27); ``details`` may name the
+    permission that was denied but never the other party's data.
+    """
+
+    code = "authorization_error"
+    http_status = 403
+
+
+class NoPendingApprovalError(BankAssistError):
+    """A resume was requested for a session with no interrupted graph waiting.
+
+    Covers both "never paused" and "already resumed once" (duplicate-resume
+    protection, FR-15/AC-6) — a client-state conflict, not a server fault.
+    """
+
+    code = "no_pending_approval"
+    http_status = 409
