@@ -25,6 +25,8 @@ class SpanType(StrEnum):
 
     REQUEST = "request"
     LLM_CALL = "llm_call"
+    EMBEDDING = "embedding"
+    RETRIEVAL = "retrieval"
 
 
 class SpanStatus(StrEnum):

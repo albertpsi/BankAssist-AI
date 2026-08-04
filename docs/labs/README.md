@@ -20,7 +20,7 @@ badly from memory on the last day. Write it at each lab's exit.
 | File | Lab | Status |
 |---|---|---|
 | `lab-01-ai-assisted-delivery.md` | AI-Assisted Software Delivery | ⬜ |
-| `lab-02-basic-rag.md` | Basic RAG Pipeline | ⬜ |
+| `lab-02-basic-rag.md` | Basic RAG Pipeline | ✅ |
 | `lab-03-enterprise-rag.md` | Enterprise Multi-Stage RAG | ⬜ |
 | `lab-04-multi-agent.md` | Multi-Agent Orchestration | ⬜ |
 | `lab-05-guardrails.md` | Enterprise Guardrails Architecture | ⬜ |

@@ -50,8 +50,10 @@ data/bm25_index/
 data/cache/
 
 # ---- Model caches (large, re-downloadable) ----
+# Anchored to repo root (leading /) so this doesn't also match
+# src/bankassist/rag/models/, which is application code, not a cache.
 .cache/
-models/
+/models/
 .sentence_transformers/
 .huggingface/
 
@@ -89,3 +91,9 @@ logs/
 # public. Kept local rather than published. Remove this line if you decide it
 # should be tracked.
 Hands-on Lab Completion Document.pdf
+
+# ---- Corpus build provenance (Lab 2) ----
+# The build report and source archive behind data/policies/ — not application
+# code, not needed to run or test the app. data/policies/ itself IS tracked.
+REPORT.md
+BankAssist_Banking_Knowledge_Base.zip

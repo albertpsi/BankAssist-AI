@@ -47,3 +47,36 @@ class LLMError(BankAssistError):
 
     code = "llm_error"
     http_status = 502
+
+
+class IngestionError(BankAssistError):
+    """The policy corpus could not be read.
+
+    A corpus problem is an operator problem — a missing sidecar, an unparseable
+    JSON file, a required key absent — so the message always names the file.
+    Raised only by the ingestion path, which is a CLI, never a request.
+    """
+
+    code = "ingestion_error"
+    http_status = 500
+
+
+class EmbeddingError(BankAssistError):
+    """An embeddings provider call failed.
+
+    Separate from ``LLMError`` because the two have different failure modes and
+    different cost accounting, even though they share a provider and an SDK.
+    """
+
+    code = "embedding_error"
+    http_status = 502
+
+
+class VectorStoreError(BankAssistError):
+    """A vector store operation failed.
+
+    Wraps Pinecone SDK exceptions so they do not leak past the ``rag`` package.
+    """
+
+    code = "vector_store_error"
+    http_status = 502

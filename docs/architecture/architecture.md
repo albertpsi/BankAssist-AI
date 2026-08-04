@@ -1,8 +1,17 @@
 # BankAssist AI — Architecture
 
 **Status:** Approved with amendments
-**Version:** 0.2
-**Date:** 2026-08-03
+**Version:** 0.3
+**Date:** 2026-08-04
+
+> **Amendment log — v0.3.** §5 (RAG architecture) and §11 rows 3–4 reconciled with what
+> Lab 2 and Lab 3 actually built: Pinecone + OpenAI `text-embedding-3-small` replace
+> ChromaDB + local MiniLM ([ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md));
+> reranking reinstates `sentence-transformers`, scoped to the cross-encoder only
+> ([ADR-0008](../decisions/0008-reranker-dependency.md)); the enterprise classification
+> labels, chunking description, and citation scope now match
+> [`docs/requirements/lab-03-enterprise-rag.md`](../requirements/lab-03-enterprise-rag.md)
+> rather than the pre-implementation sketch.
 
 > **Amendment log — v0.2.** OpenAI is the initial provider (§9, §11 row 9); no second
 > credential is a prerequisite. Economical models are the default tier. The guardrail
@@ -214,11 +223,23 @@ path too**, so a cached response cannot bypass grounding and PII checks.
 
 ## 5. RAG architecture
 
-### 5.1 Two pipelines, one interface
+> **Reconciled at Lab 3 (2026-08-04).** This section previously described a
+> pre-implementation sketch (ChromaDB, local MiniLM embeddings, citation
+> validation, session-history-aware rewriting) that predates
+> [ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md) and the actual
+> Lab 3 build. It is updated below to match what exists:
+> [`docs/requirements/lab-03-enterprise-rag.md`](../requirements/lab-03-enterprise-rag.md)
+> is the authoritative spec.
 
-Lab 2's basic pipeline is not thrown away when Lab 3 lands. Both implement a
-`RetrievalPipeline` protocol and are selectable by config, which is what makes the
-Lab 2 vs Lab 3 comparison in the write-up possible.
+### 5.1 Two pipelines, a shared `answer()` shape
+
+Lab 2's basic pipeline is not thrown away when Lab 3 lands. `BasicRagPipeline`
+(`rag/pipeline/basic_pipeline.py`) is untouched; `EnterpriseRagPipeline`
+(`rag/pipeline/enterprise_pipeline.py`) is a new, independent pipeline selected
+by the `mode` field on `POST /rag/query` — not a shared class hierarchy, since
+their internals genuinely differ (single retrieval call vs. ten sequenced
+stages). Both are constructed and cached independently in
+`api/routes/rag.py`, so building one never requires the other.
 
 ```mermaid
 graph LR
@@ -229,40 +250,51 @@ graph LR
 
 ```mermaid
 graph TB
-    Q[User query + history] --> CL[1 . Query classification<br/>policy / account / dispute /<br/>general / out-of-domain]
-    CL --> RW[2 . Query rewrite<br/>pronoun resolution,<br/>abbreviation expansion,<br/>multi-query variants]
-    RW --> HS[3a . Dense retrieval<br/>MiniLM embeddings<br/>ChromaDB top-20]
-    RW --> KS[3b . Sparse retrieval<br/>BM25Okapi top-20]
-    HS --> FU[4 . Fusion<br/>Reciprocal Rank Fusion]
+    Q[User query] --> CL["1 . Query classification (gpt-4.1-mini)<br/>Policy / FAQ / Procedure / Eligibility /<br/>Definition / Comparison / Unknown"]
+    CL --> RW[2 . Query rewrite<br/>abbreviation expansion,<br/>implicit-referent resolution]
+    RW --> HS[3a . Dense retrieval<br/>OpenAI text-embedding-3-small<br/>Pinecone top-20]
+    RW --> KS[3b . Sparse retrieval<br/>rank_bm25 BM25Okapi top-20]
+    HS --> FU[4 . Reciprocal Rank Fusion<br/>hand-rolled, k=60]
     KS --> FU
-    FU --> MF[5 . Metadata filtering<br/>category, product,<br/>effective date]
-    MF --> RR[6 . Cross-encoder rerank<br/>ms-marco-MiniLM-L-6-v2<br/>top-5]
-    RR --> CB[7 . Context builder<br/>token budget, dedup,<br/>source ids attached]
-    CB --> GR[8 . RAG guardrail<br/>untrusted-content wrapping]
-    GR --> GEN[9 . Grounded generation<br/>with inline citations]
-    GEN --> CC[10 . Citation validation<br/>every id must exist<br/>in retrieved set]
-    CC --> A[Answer + citations]
+    FU --> MF[5 . Metadata filtering<br/>category / document / source,<br/>optional]
+    MF --> RR["6 . Cross-encoder rerank<br/>ms-marco-MiniLM-L-6-v2 (ADR-0008)<br/>top-10 → top-5"]
+    RR --> CB[7 . Prompt construction<br/>question + rewrite + context +<br/>metadata + score]
+    CB --> GEN[8 . Grounded generation]
+    GEN --> A[Answer + document-level citations]
 ```
+
+Query rewriting resolves implicit referents and expands abbreviations in the
+single incoming question; there is no conversation-history state yet to
+resolve pronouns against (that arrives with Lab 4's session handling).
+Inline `[doc#chunk]` citation markers and their validation are **not** part of
+Lab 3 — document-level citations only, matching Lab 2's shape. Both remain
+candidates for Lab 5 (output guardrail) or Lab 6 (eval scoring).
 
 ### 5.2 Design notes
 
-- **Chunking**: heading-aware Markdown splitting, ~500 tokens with ~80 overlap. Each chunk
-  carries `doc_id`, `doc_title`, `section`, `category`, `effective_date`, `chunk_index`.
-  Metadata is what makes filtering (FR-3.4) and citation (FR-3.7) possible, so it is
-  captured at ingestion, not reconstructed later.
-- **Why hybrid**: dense retrieval is strong on paraphrase and weak on exact tokens. A user
-  asking about the *"Foreign Transaction Fee"* by its exact name is the canonical case
-  where BM25 wins outright. Fusing both is the cheapest large accuracy gain available.
-- **Fusion**: Reciprocal Rank Fusion (`score = Σ 1/(k + rank)`, k=60). Rank-based, so it
-  needs no score normalization between two incomparable scoring systems. Deterministic and
-  trivially unit-testable.
-- **Reranking**: the cross-encoder scores query and chunk *jointly*, which bi-encoder
-  embeddings cannot. It is the single biggest precision win in the pipeline, and it runs
-  locally on CPU in tens of milliseconds for 20 candidates.
-- **Citations**: generation is asked to emit `[doc_id#chunk_index]` markers. A deterministic
-  post-check resolves each against the retrieved set; unresolvable markers are a guardrail
-  failure, not a formatting quirk. This turns "does it hallucinate citations?" from a vibe
-  into an assertion.
+- **Chunking**: unchanged from Lab 2 — a deterministic, character-based
+  splitter (700–900 chars, 120 overlap, paragraph → sentence → whitespace
+  boundary preference; see `docs/requirements/lab-02-basic-rag.md` §3 FR-L2-3).
+  Not token-based, not heading-aware. Enterprise mode's BM25 index is built
+  from this same chunked corpus, not a second chunking pass.
+- **Why hybrid**: dense retrieval is strong on paraphrase and weak on exact
+  tokens. A user asking about the chargeback window by its exact wording is
+  the canonical case where BM25 wins outright. Fusing both is the cheapest
+  large accuracy gain available.
+- **Fusion**: Reciprocal Rank Fusion (`score = Σ 1/(k + rank)`, k=60),
+  implemented by hand in `rag/stages/rrf_ranker.py` — no external RRF library.
+  Rank-based, so it needs no score normalization between two incomparable
+  scoring systems. Deterministic and directly unit-tested against hand-computed
+  fixtures.
+- **Reranking**: `cross-encoder/ms-marco-MiniLM-L-6-v2`, scoring query and
+  chunk *jointly*, which the bi-encoder embeddings used for dense retrieval
+  cannot. Runs locally via `sentence-transformers`, reinstated for this
+  purpose only — [ADR-0008](../decisions/0008-reranker-dependency.md) — since
+  ADR-0007 had removed it. Embeddings themselves stay on OpenAI.
+- **Citations**: document-level only, same shape as Lab 2's `sources` list —
+  the distinct source documents behind the top-5 reranked chunks actually used
+  in the prompt. Inline per-chunk markers and their validation are deferred
+  (see §5.1).
 
 ---
 
@@ -692,8 +724,9 @@ guarantees has failed at its own subject:
 |---|---|---|---|---|---|
 | 1 | Deployment shape | Modular monolith | Microservices | Fits the time budget; keeps every layer demonstrable in one trace. | No independent scaling or deployment; boundaries enforced by convention and review, not by network. |
 | 2 | Orchestration | Hand-written supervisor | LangGraph / CrewAI / AutoGen | Every hop visible and explainable; exact trace control; no large dependency. | We reimplement routing, loop bounds, and state; no ecosystem tooling. |
-| 3 | Embeddings & reranking | Local `sentence-transformers` | Hosted embedding/rerank APIs | Zero marginal cost, offline, deterministic, fast on CPU for this corpus size. | Lower ceiling on retrieval quality than a frontier embedding model; ~500 MB of model download. |
-| 4 | Vector store | ChromaDB (persistent, local) | pgvector / Pinecone / Qdrant / FAISS | Zero infrastructure, persists to disk, metadata filtering built in. | Not a scale story; single-process only. |
+| 3 | Embeddings | OpenAI `text-embedding-3-small` (hosted) | Local `sentence-transformers` MiniLM | Lab 2 brief mandate; better retrieval quality than a 384-d local model ([ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md)). | Paid, rate-limited, network-dependent — a second hosted dependency on the critical path. |
+| 3a | Reranking (Lab 3 only) | Local `sentence-transformers` `CrossEncoder` (`ms-marco-MiniLM-L-6-v2`) | Hosted rerank API; LLM-based reranking | Lab 3 brief names this model; runs free, offline, deterministic, fast on CPU for 10 candidates ([ADR-0008](../decisions/0008-reranker-dependency.md)). | Reintroduces `torch`'s ~2.5 GB dependency tree, which ADR-0007 had specifically avoided. |
+| 4 | Vector store | Pinecone (serverless, hosted) | ChromaDB / pgvector / Qdrant / FAISS | Lab 2 brief mandate; managed, no local persistence to manage ([ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md)). | Paid credential and network round trip on every ingest and query; no offline demo. |
 | 5 | Keyword search | `rank_bm25` in-process | Elasticsearch / OpenSearch | Two dependencies-free lines vs. a JVM service. | Index rebuilt at startup; fine at this corpus size, wrong at 10⁶ docs. |
 | 6 | Guardrails | Custom layered engine | NeMo Guardrails / Guardrails AI | Full control over verdict shape and trace integration; no DSL to learn or explain. | We own the rule corpus; no community-maintained attack patterns. |
 | 7 | Tracing | Custom JSONL tracer | OpenTelemetry + Jaeger / LangSmith / Phoenix | No account, no collector, no extra process; the file *is* the artifact. | No distributed tracing, no production-grade UI; we build the viewer. |

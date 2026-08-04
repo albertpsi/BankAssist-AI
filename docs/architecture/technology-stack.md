@@ -1,8 +1,14 @@
 # Technology Stack
 
-**Status:** Proposal, pending human approval
-**Version:** 0.1
+**Status:** Approved; **amended 2026-08-03 for Lab 2 — the amendment is pending approval**
+**Version:** 0.2
 **Date:** 2026-08-03
+
+> **Amendment (v0.2) — vector store and embeddings.** The Lab 2 brief mandates **Pinecone**
+> and OpenAI **`text-embedding-3-small`**, and forbids `sentence-transformers`. Those rows of
+> §2 are superseded; see [ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md) and §3.8
+> below. The reranking row is consequently an **open item for Lab 3**. Everything else in this
+> document stands.
 
 Selection principle: **the simplest stack that lets one engineer demonstrate all seven lab
 capabilities in 2–3 days, on this machine, with evidence.** Anything that would be correct
@@ -49,9 +55,12 @@ up either. **This is the one open decision in the stack — see §3.1.**
 **Repository state:** `BankAssist-AI/` is a git repo with remote
 `https://github.com/albertpsi/BankAssist-AI.git`, branch `main`, **zero commits**.
 
-**Not installed yet** (added to `requirements.txt` as each lab needs them): `uvicorn`,
-`pydantic-settings`, `pytest`, `pytest-cov`, `ruff` (Lab 1); `chromadb`, `rank_bm25`,
-`tiktoken`, `streamlit` (Lab 2 onward).
+**Not installed yet** (added to `requirements.txt` as each lab needs them): ~~`uvicorn`,
+`pydantic-settings`, `pytest`, `pytest-cov`, `ruff`~~ (Lab 1 — now installed); `pinecone`,
+`streamlit`, `PyYAML` (Lab 2); `rank_bm25`, `tiktoken` (Lab 3).
+
+**Credential note (v0.2 amendment):** `PINECONE_API_KEY` is **not** set on this machine.
+It must be provisioned before Lab 2 can populate an index.
 
 ---
 
@@ -64,9 +73,9 @@ up either. **This is the one open decision in the stack — see §3.1.**
 | **API** | FastAPI + Uvicorn | Already installed; Pydantic-native; auto OpenAPI docs are free screenshot material |
 | **UI** | Streamlit | Fastest route to a multi-tab demo (chat / traces / evaluation / cost). The UI is a screenshot source, not a product |
 | **LLM** | `openai` SDK behind an `LLMClient` interface; Anthropic adapter optional, later | Uses the credential already present; no lab depends on a second one — see §3.1 |
-| **Embeddings** | `sentence-transformers` `all-MiniLM-L6-v2` (384-dim) | Installed; ~80 MB; CPU-fast; zero marginal cost; deterministic; offline |
-| **Reranking** | `sentence-transformers` `CrossEncoder` `ms-marco-MiniLM-L-6-v2` | Same library; the single largest precision gain in the pipeline; ~90 MB; tens of ms for 20 candidates |
-| **Vector store** | ChromaDB, persistent local client | Zero infrastructure, persists to disk, metadata filtering built in, pip-installable |
+| **Embeddings** | ~~`sentence-transformers` `all-MiniLM-L6-v2`~~ → **OpenAI `text-embedding-3-small` (1536-dim)** *(ADR-0007)* | Mandated by the Lab 2 brief; higher retrieval quality than MiniLM; no `torch` install. Costs a fraction of a cent per full ingestion |
+| **Reranking** | ~~`sentence-transformers` `CrossEncoder`~~ → **open item for Lab 3** *(ADR-0007)* | `sentence-transformers` is no longer in the stack, so Lab 3 must choose a different reranking approach at its own approval gate |
+| **Vector store** | ~~ChromaDB, persistent local client~~ → **Pinecone (serverless, namespace `bank-policies`)** *(ADR-0007)* | Mandated by the Lab 2 brief. Managed index, first-class console screenshot for lab evidence; costs a second credential and network dependence |
 | **Keyword search** | `rank_bm25` (BM25Okapi) | Pure Python, no service, ~10 lines to index this corpus. Supplies the hybrid half that dense search misses |
 | **Mock data** | SQLite (stdlib) + deterministic seed script | Real SQL exercises the tool layer honestly; ships with Python; zero setup |
 | **Orchestration** | Hand-written supervisor + bounded tool loop | Every hop visible in the trace; no framework internals to explain second-hand ([ADR-0002](../decisions/0002-hand-written-orchestration.md)) |
@@ -90,10 +99,11 @@ openai                         # initial provider (credential already present)
 # anthropic                    # optional, only if an Anthropic adapter is added later
 
 # RAG
-sentence-transformers          # embeddings + cross-encoder reranking (installed)
-chromadb                       # persistent vector store
-rank-bm25                      # sparse retrieval
-tiktoken                       # token budgeting for context assembly
+pinecone                       # managed vector store          (Lab 2, ADR-0007)
+# embeddings via the `openai` SDK above — text-embedding-3-small
+rank-bm25                      # sparse retrieval              (Lab 3)
+tiktoken                       # token budgeting for context assembly (Lab 3)
+# reranking                    # open item for Lab 3 — see ADR-0007
 
 # Data / eval
 PyYAML, numpy
@@ -200,6 +210,18 @@ run in-process. Adding a container adds build time, image size (torch is ~2.5 GB
 Windows volume-mount debugging risk, in exchange for reproducibility that a pinned
 `requirements.txt` already provides at this scale.
 
+### 3.8 Pinecone and API embeddings (amendment, Lab 2)
+
+The two rows above changed because the Lab 2 brief requires them, not because the original
+reasoning was wrong — local Chroma + MiniLM remains the better engineering choice for a
+system that must run offline at zero marginal cost. Demonstrating a managed vector database
+and a hosted embedding model is part of what Lab 2 is graded on, so the requirement wins.
+
+Both services sit behind first-party `VectorStore` and `Embedder` interfaces with in-repo
+test doubles, so the test suite still runs offline, with no account and no cost. The full
+reasoning, the alternatives, and the knock-on effects on Labs 3 and 7 are in
+[ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md).
+
 ### 3.7 Python 3.13 vs 3.12
 
 3.13 is the default interpreter and already carries `torch` and `sentence-transformers`, so
@@ -218,9 +240,9 @@ application code is written.
 | Provider prompt caching not measurably observable on OpenAI | Medium | One of six Lab 7 levers becomes qualitative | Accepted by design (§3.1); the other five levers carry the lab, and the absence of a signal is reported as a finding |
 | Configured model id unavailable on the account | Medium | Startup failure | Settings validate the model id at startup and fail loudly with the configured value named |
 | Price table drifts from published pricing | Medium | Cost figures in the submission are wrong | Table is configuration with a documented verify-before-quoting rule |
-| `chromadb` has no Python 3.13 wheel | Medium | Half a day lost | Verify on day 1; fall back to the 3.12 interpreter, or to a numpy + SQLite vector store (~60 lines) |
-| First-run model downloads (~200 MB embed+rerank, plus torch if not shared) are slow | Medium | Delays first demo | Download during Lab 2 setup, before it's on the critical path |
-| Cross-encoder reranking too slow on CPU | Low | Latency target missed | Rerank only the top-20 fused candidates, not the full set |
+| ~~`chromadb` has no Python 3.13 wheel~~ / ~~first-run model downloads~~ / ~~cross-encoder too slow on CPU~~ | — | — | Retired by the v0.2 amendment: neither library is in the stack |
+| Pinecone credential or network unavailable | Medium | No retrieval at all — the demo cannot run offline | Provision the key before Lab 2 M4; the test suite runs offline via the `VectorStore` double regardless |
+| Lab 3 reranking has no chosen implementation | Medium | Lab 3 stalls at its design gate | Decide it at the Lab 3 approval gate; ADR-0007 records it as an open item rather than an assumption |
 | Streamlit + FastAPI both needing to run | Low | Demo friction | Streamlit calls the API over HTTP; document the two-command startup |
 | Scope creep across 7 labs | **High** | Project doesn't finish | Lab-by-lab exit criteria in the implementation plan; cut depth before cutting labs |
 | Token spend during iteration | Low | Minor cost | Economical tier by default; stub the LLM in unit tests; caching from Lab 7 onward |
@@ -234,7 +256,7 @@ has a foundation, and so the choices above read as choices rather than limits.
 
 | This project | Production |
 |---|---|
-| ChromaDB local | pgvector, Qdrant, or a managed vector service with entitlement-aware retrieval |
+| Pinecone serverless, one namespace, one API key | Entitlement-aware retrieval: per-tenant namespaces or indexes, row-level access control, key rotation, and a private-network endpoint |
 | `rank_bm25` in-process | OpenSearch / Elasticsearch |
 | SQLite mock data | The real core banking system, behind an anti-corruption layer |
 | Custom JSONL tracer | OpenTelemetry → collector → Tempo/Datadog; the span model is already shaped for this |
