@@ -43,6 +43,12 @@ bcrypt>=4.1.0                  # password hashing (passlib's bcrypt wrapper is
 graphviz>=0.20.0                # required by st.graphviz_chart(dot_string); renders
                                  # client-side via dagre-d3, no system Graphviz binary needed
 
+# --- Guardrails: AI-semantic input/output rails (Lab 5, ADR-0011) ---
+nemoguardrails==0.23.0          # input/output rail engine — see ADR-0011 for why this
+                                 # supersedes ADR-0003 for AI-semantic checks only
+langchain-openai>=1.4.0         # thin adapter so NeMo can call the existing OpenAI
+                                 # credential/model tier; not a second LLM provider
+
 # --- Added in later labs ---
 # (nothing pending)
 #

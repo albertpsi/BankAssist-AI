@@ -728,7 +728,7 @@ guarantees has failed at its own subject:
 | 3a | Reranking (Lab 3 only) | Local `sentence-transformers` `CrossEncoder` (`ms-marco-MiniLM-L-6-v2`) | Hosted rerank API; LLM-based reranking | Lab 3 brief names this model; runs free, offline, deterministic, fast on CPU for 10 candidates ([ADR-0008](../decisions/0008-reranker-dependency.md)). | Reintroduces `torch`'s ~2.5 GB dependency tree, which ADR-0007 had specifically avoided. |
 | 4 | Vector store | Pinecone (serverless, hosted) | ChromaDB / pgvector / Qdrant / FAISS | Lab 2 brief mandate; managed, no local persistence to manage ([ADR-0007](../decisions/0007-pinecone-and-api-embeddings.md)). | Paid credential and network round trip on every ingest and query; no offline demo. |
 | 5 | Keyword search | `rank_bm25` in-process | Elasticsearch / OpenSearch | Two dependencies-free lines vs. a JVM service. | Index rebuilt at startup; fine at this corpus size, wrong at 10⁶ docs. |
-| 6 | Guardrails | Custom layered engine | NeMo Guardrails / Guardrails AI | Full control over verdict shape and trace integration; no DSL to learn or explain. | We own the rule corpus; no community-maintained attack patterns. |
+| 6 | Guardrails | Custom deterministic controls (auth/RBAC/ownership/tool/HITL/redaction/masking) + NeMo Guardrails for AI-semantic input/output rails only ([ADR-0011](../decisions/0011-nemo-guardrails-for-ai-semantic-rails.md), supersedes row for that scope) | Guardrails AI; fully custom regex for injection/jailbreak | NeMo demonstrates an enterprise AI-semantic rail pattern; deterministic app-security controls stay ours so they never depend on a model's judgement. | Extra LLM call per guarded turn; NeMo's own dependency tree; own verdict shape normalized via `nemo_adapter.py` so nothing downstream depends on NeMo types. |
 | 7 | Tracing | Custom JSONL tracer | OpenTelemetry + Jaeger / LangSmith / Phoenix | No account, no collector, no extra process; the file *is* the artifact. | No distributed tracing, no production-grade UI; we build the viewer. |
 | 8 | Evaluation | Custom scorers + LLM-as-judge | RAGAS / DeepEval | Transparent metric definitions we can show in the write-up; no heavy dependency tree. | Metric implementations are ours to validate; no published benchmarks. |
 | 9 | LLM provider | OpenAI (existing credential), behind `LLMClient` | Anthropic primary; direct SDK calls everywhere | No second credential becomes a project prerequisite. Lab 7's measurable core moves to semantic caching, tier routing, token accounting, latency, and cost — all provider-independent. | Provider-native prompt caching is less observable, so that part of Lab 7 is best-effort. Anthropic remains addable behind the same interface. |
@@ -759,3 +759,65 @@ foundation, and so the choices above are legibly *choices* rather than limits:
   thresholds, and grow the dataset from production traces that were flagged by guardrails.
 - **Cost at scale**: per-tenant budgets and quotas, cache warming for known-hot policy
   questions, and a longer-TTL prompt cache for high-traffic prefixes.
+
+---
+
+## 13. Lab 5 — Guardrail & security architecture
+
+Additive to every section above — no Lab 1–4 component is replaced. Two kinds of
+control, deliberately not merged into one "guardrail" concept (ADR-0011):
+
+- **AI-semantic rails** (NeMo Guardrails): fuzzy, LLM-judged — prompt injection,
+  jailbreak, system-prompt extraction, semantic output safety.
+- **Deterministic application security**: authentication (JWT, ADR-0010), RBAC
+  (ADR-0010), customer ownership, tool authorization, HITL approval + replay
+  protection, secret redaction, PII/financial-data masking. These hold even if NeMo is
+  unavailable, wrong, or bypassed.
+
+```mermaid
+flowchart TD
+    Client --> Auth["JWT Authentication (Lab 4)"]
+    Auth --> InputVal["Deterministic Input Validation"]
+    InputVal -- blocked --> BlockedResp["Blocked response, no agent ever runs"]
+    InputVal --> NemoIn["NeMo Input Rail (AI-semantic)"]
+    NemoIn -- blocked --> BlockedResp
+    NemoIn --> Supervisor["LangGraph Supervisor (Lab 4)"]
+    Supervisor --> Agents["Policy / Banking / Dispute Agent"]
+    Agents --> ToolAuth["Tool Authorization boundary\n(permission + ownership, independent of routing)"]
+    ToolAuth -- blocked --> BlockedResp
+    ToolAuth --> Tools["Banking Tools / Enterprise RAG"]
+    Tools --> NemoOut["NeMo Output Rail (AI-semantic)"]
+    NemoOut -- blocked --> SafeResp["Safe structured response"]
+    NemoOut --> Redact["Deterministic Secret Redaction + PII/Financial Masking"]
+    Redact --> Response
+```
+
+### HITL / financial-mutation path
+
+```mermaid
+flowchart TD
+    DisputeAgent["Dispute Agent"] --> Ownership["Ownership check\n(row-level customer_id match)"]
+    Ownership -- blocked --> NoMutation["No mutation"]
+    Ownership --> Eligibility["Eligibility check (deterministic)"]
+    Eligibility -- ineligible --> NoMutation
+    Eligibility --> Authz["Authorization check\n(CREATE_OWN_DISPUTE)"]
+    Authz -- blocked --> NoMutation
+    Authz --> Interrupt["interrupt() — human approval"]
+    Interrupt -- rejected --> NoMutation
+    Interrupt -- approved --> MutationGuard["Financial Mutation Guard\n(approved AND not already consumed)"]
+    MutationGuard -- blocked/replay --> NoMutation
+    MutationGuard --> CreateDispute["create_dispute()"]
+    CreateDispute --> OutputGuard["NeMo Output Rail + Redaction/Masking"]
+```
+
+### Tool-call security boundary (lower-level)
+
+```mermaid
+flowchart LR
+    Agent --> ToolRequest["Tool Request"]
+    ToolRequest --> PermCheck["Permission Check"]
+    PermCheck --> OwnerCheck["Ownership Check"]
+    OwnerCheck --> ApprovalCheck["Approval Check (mutating tools only)"]
+    ApprovalCheck --> Tool["Tool Execution"]
+    Tool --> Audit["ExecutionEvent (audit)"]
+```

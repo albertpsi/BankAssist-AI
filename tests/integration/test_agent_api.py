@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from tests.support.fake_nemo import FakeNemoAdapter
 
 from bankassist.agents.graph import build_graph
 from bankassist.api.app import create_app
@@ -58,13 +59,18 @@ def _seeded_db(tmp_path: Path) -> Path:
     return db_path
 
 
-def _app_with_graph(tmp_path: Path, responses: list[str]) -> tuple[FastAPI, Settings]:
+def _app_with_graph(
+    tmp_path: Path, responses: list[str], *, nemo: FakeNemoAdapter | None = None
+) -> tuple[FastAPI, Settings]:
     db_path = _seeded_db(tmp_path)
     settings = Settings(openai_api_key="test-key", banking_db_path=db_path, tracing_enabled=False)
     app = create_app(settings)
     llm = StubLLMClient(responses)
     app.state.agent_graph = build_graph(
-        llm=llm, enterprise_pipeline=_FakePipeline(), db_path=db_path
+        llm=llm,
+        enterprise_pipeline=_FakePipeline(),
+        db_path=db_path,
+        nemo=nemo or FakeNemoAdapter(),
     )
     return app, settings
 
