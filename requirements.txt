@@ -49,6 +49,10 @@ nemoguardrails==0.23.0          # input/output rail engine — see ADR-0011 for 
 langchain-openai>=1.4.0         # thin adapter so NeMo can call the existing OpenAI
                                  # credential/model tier; not a second LLM provider
 
+# --- AgentOps observability (Lab 6, ADR-0012) ---
+agentops>=0.4.21                # sessions/traces/agent/LLM/tool/latency/cost telemetry;
+                                 # auto-instruments LangGraph + OpenAI on agentops.init()
+
 # --- Added in later labs ---
 # (nothing pending)
 #

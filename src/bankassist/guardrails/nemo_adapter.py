@@ -24,6 +24,7 @@ from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapte
 
 from bankassist.config import Settings
 from bankassist.guardrails.models import GuardrailCategory, GuardrailResult
+from bankassist.observability import run as observability_run
 
 _CONFIG_DIR = Path(__file__).parent / "nemo_config"
 
@@ -70,7 +71,16 @@ class NemoGuardrailsAdapter:
         self._output_rails = LLMRails(_load_config("output_rail.yml"), llm=llm)
 
     def check_input(self, user_input: str) -> GuardrailResult:
-        response = self._input_rails.generate(messages=[{"role": "user", "content": user_input}])
+        # Named AgentOps span (Lab 6 requirements §5): a guardrail verdict is
+        # neither an LLM call nor a tool call from AgentOps' point of view,
+        # even though it calls an LLM internally (which AgentOps does capture
+        # automatically) — this labels the verdict boundary itself.
+        response = observability_run(
+            "operation",
+            "guardrail.input_rail",
+            self._input_rails.generate,
+            messages=[{"role": "user", "content": user_input}],
+        )
         if _triggered(response):
             return GuardrailResult.block(
                 INPUT_GUARDRAIL_ID,
@@ -88,7 +98,12 @@ class NemoGuardrailsAdapter:
         redaction/masking (``guardrails.redaction``/``guardrails.masking``) is the layer
         responsible for altering output text; this only classifies it.
         """
-        response = self._output_rails.generate(messages=[{"role": "user", "content": bot_response}])
+        response = observability_run(
+            "operation",
+            "guardrail.output_rail",
+            self._output_rails.generate,
+            messages=[{"role": "user", "content": bot_response}],
+        )
         if _triggered(response):
             return GuardrailResult.block(
                 OUTPUT_GUARDRAIL_ID,

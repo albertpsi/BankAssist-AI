@@ -125,6 +125,50 @@ ownership, gate `create_dispute`, or decide what leaves the system. Those are, a
 remain, plain deterministic application code, testable without a live model
 (Lab 5 §7/§13).
 
+## Known finding: silent over-blocking from NeMo's default output parser (2026-08-04)
+
+Discovered via the Lab 6 AgentOps dashboard (a visible ~33% span fail rate) and
+reproduced against a running instance: legitimate requests — e.g. "show my recent
+transactions" — were occasionally refused with `"This response could not be delivered
+as generated."` despite violating none of the output rail's three criteria.
+
+Root cause, confirmed by reading `nemoguardrails/llm/output_parsers.py:is_content_safe`
+directly (the function both `nemo_config/*.yml` prompts rely on, registered here by
+default per the taskmanager's own fallback logic): it inspects only the **first two
+whitespace-split words** of the classifier LLM's answer for `"safe"`/`"unsafe"`/
+`"yes"`/`"no"`. Confirmed with the real function against realistic phrasings:
+
+```
+'no'                                              -> [True]   (safe — correct)
+'No, this is fine.'                               -> [True]   (safe — correct)
+'Based on my review, no violation is present.'    -> [False]  (BLOCKED — wrong)
+'I have reviewed the response and conclude: no.'  -> [False]  (BLOCKED — wrong)
+'The response does not violate any policy.'       -> [False]  (BLOCKED — wrong)
+```
+
+Any answer where the LLM's own reasoning preamble pushes the actual "yes"/"no" past
+the first two words is **silently treated as unsafe and blocked** — no error, no
+warning at the classification site, just a refused legitimate request. Both prompts
+only said "answer with exactly one word," an unenforced instruction gpt-4o-mini does
+not reliably follow.
+
+**Fix** (`nemo_config/input_rail.yml`, `nemo_config/output_rail.yml`): register
+`output_parser: "is_content_safe"` explicitly (removes the ambiguity and the
+"unregistered, using default" deprecation warning), tighten the prompt wording
+("Respond with ONLY the single word..."), and add `max_tokens: 4` — a structural cap
+that makes a multi-word reasoning preamble physically impossible, not just
+discouraged. The output rail's third criterion was also reworded to state explicitly
+that factual account/transaction data is not investment advice, addressing a
+follow-up requirement: block investment-advice content without over-blocking genuine
+account/transaction queries.
+
+Verified: the full guardrail test suite (27 cases, fake-LLM, network-free) still
+passes with the updated YAML; the previously-present `is_content_safe`
+"output_parser is not registered" deprecation warning no longer appears. Confirming
+the false-positive is actually gone against the real model requires re-running the
+live app (unit tests substitute a fake LLM entirely, so they cannot exercise gpt-4o-mini's
+real answer-formatting behavior) — pending the user re-running the reproduction case.
+
 ## Revisit when
 
 NeMo's output-rail wiring gap (see Alternatives) is resolved in a future NeMo release

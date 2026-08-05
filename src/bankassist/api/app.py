@@ -21,6 +21,7 @@ from bankassist.config import Settings, get_settings
 from bankassist.context import get_trace_id, trace_context
 from bankassist.errors import BankAssistError
 from bankassist.logging_config import configure_logging, get_logger
+from bankassist.observability import init_agentops
 from bankassist.tracing.span import SpanType
 from bankassist.tracing.tracer import build_tracer
 
@@ -69,6 +70,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved
     app.state.tracer = build_tracer(enabled=resolved.tracing_enabled)
+    # AgentOps (Lab 6, ADR-0012): no-ops unless AGENTOPS_ENABLED and a key are
+    # both configured — never blocks startup, and inert for every test.
+    init_agentops(resolved)
 
     app.include_router(health.router)
     app.include_router(rag.router)

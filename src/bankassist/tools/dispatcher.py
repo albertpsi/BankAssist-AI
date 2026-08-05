@@ -19,6 +19,7 @@ from bankassist.execution_event import (
     ExecutionEventType,
     ExecutionStatus,
 )
+from bankassist.observability import run as observability_run
 
 
 def call_tool[T](
@@ -45,7 +46,11 @@ def call_tool[T](
     ]
     started = time.perf_counter()
     try:
-        result = fn()
+        # AgentOps' automatic OpenAI/LangGraph instrumentation doesn't see a
+        # plain Python function call — this is the one deliberate custom span
+        # per tool invocation (Lab 6 requirements §5). No-ops when AgentOps
+        # is disabled (the default, and always the case under test).
+        result = observability_run("tool", label, fn)
     except BankAssistError as exc:
         duration_ms = round((time.perf_counter() - started) * 1000.0, 2)
         events.append(

@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 
 from bankassist.config import Settings
+from bankassist.observability import run as observability_run
 from bankassist.rag.interfaces.classifier import Classifier
 from bankassist.rag.interfaces.reranker import Reranker
 from bankassist.rag.interfaces.retriever import Retriever
@@ -67,35 +68,59 @@ class EnterpriseRagPipeline:
     def answer(self, question: str, filters: MetadataFilters | None = None) -> PipelineResult:
         latencies: dict[str, float] = {}
 
-        classification = self._classifier.execute(question)
+        # Each stage gets a named AgentOps operation span (Lab 6 requirements
+        # §5/§6): this whole method runs inside one LangGraph node
+        # (policy_agent/dispute_agent), so automatic LangGraph instrumentation
+        # sees exactly one step here without these — the multi-stage pipeline
+        # would otherwise be invisible in the AgentOps trace.
+        classification = observability_run(
+            "operation", "rag.classify", self._classifier.execute, question
+        )
         latencies["classification"] = classification.latency_ms
 
-        rewrite = self._rewriter.execute(question, classification)
+        rewrite = observability_run(
+            "operation", "rag.rewrite", self._rewriter.execute, question, classification
+        )
         latencies["rewrite"] = rewrite.latency_ms
 
         vector_top_k = self._settings.retrieval_vector_top_k_enterprise
         bm25_top_k = self._settings.retrieval_bm25_top_k
-        vector_results = self._vector_retriever.execute(
-            rewrite.rewritten_question, top_k=vector_top_k
+        vector_results = observability_run(
+            "operation",
+            "rag.vector_retrieval",
+            self._vector_retriever.execute,
+            rewrite.rewritten_question,
+            top_k=vector_top_k,
         )
         latencies["vector_retrieval"] = vector_results.latency_ms
 
-        bm25_results = self._bm25_retriever.execute(rewrite.rewritten_question, top_k=bm25_top_k)
+        bm25_results = observability_run(
+            "operation",
+            "rag.bm25_retrieval",
+            self._bm25_retriever.execute,
+            rewrite.rewritten_question,
+            top_k=bm25_top_k,
+        )
         latencies["bm25_retrieval"] = bm25_results.latency_ms
 
         hybrid = self._hybrid_retriever.execute(vector_results, bm25_results)
         filtered = self._metadata_filter.execute(hybrid, filters)
 
         started_rrf = time.perf_counter()
-        rrf_result = self._rrf_ranker.execute(filtered)
+        rrf_result = observability_run("operation", "rag.rrf", self._rrf_ranker.execute, filtered)
         latencies["rrf"] = round((time.perf_counter() - started_rrf) * 1000.0, 2)
 
         candidates = rrf_result.model_copy(
             update={"entries": rrf_result.entries[: self._settings.rerank_candidate_count]}
         )
         started_rerank = time.perf_counter()
-        reranked = self._reranker.execute(
-            rewrite.rewritten_question, candidates, top_n=self._settings.rerank_top_n
+        reranked = observability_run(
+            "operation",
+            "rag.rerank",
+            self._reranker.execute,
+            rewrite.rewritten_question,
+            candidates,
+            top_n=self._settings.rerank_top_n,
         )
         latencies["rerank"] = round((time.perf_counter() - started_rerank) * 1000.0, 2)
 
@@ -107,7 +132,9 @@ class EnterpriseRagPipeline:
             )
         )
 
-        generation = self._generator.execute(prompt_context)
+        generation = observability_run(
+            "operation", "rag.generate", self._generator.execute, prompt_context
+        )
         latencies["generation"] = generation.latency_ms
 
         citations = _distinct_sources(reranked.entries) if generation.grounded else []

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from bankassist.observability import run as observability_run
 from bankassist.security.context import SecurityContext
 from bankassist.tools import get_customer_accounts, get_recent_transactions
 from bankassist.tools.models import Account, Transaction
@@ -24,8 +25,17 @@ def answer_banking_request(context: SecurityContext, db_path: Path) -> BankingAn
     generating prose around a fixed shape would add cost without adding information
     for this lab's scope.
     """
-    accounts = get_customer_accounts(context, db_path).accounts
-    transactions = get_recent_transactions(context, db_path, limit=5).transactions
+    # Named AgentOps tool spans (Lab 6 requirements §5) — the ExecutionEvents
+    # this module's caller emits stay the BankAssist-facing record; these are
+    # the operational trace AgentOps surfaces.
+    accounts = observability_run(
+        "tool", "get_customer_accounts", lambda: get_customer_accounts(context, db_path)
+    ).accounts
+    transactions = observability_run(
+        "tool",
+        "get_recent_transactions",
+        lambda: get_recent_transactions(context, db_path, limit=5),
+    ).transactions
 
     lines = ["Here is a summary of your accounts and recent transactions:", ""]
     for account in accounts:

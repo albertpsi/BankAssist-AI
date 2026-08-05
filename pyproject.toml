@@ -46,7 +46,10 @@ known-first-party = ["bankassist"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# ``src`` for the ``bankassist`` package; ``.`` for the top-level
+# ``evaluation`` package (Lab 6) — same layout `docs/` describes, evaluation/
+# sits beside src/, not under it.
+pythonpath = ["src", "."]
 addopts = "-q --strict-markers"
 markers = [
     "live: hits a real LLM provider; excluded from the default run (requires an API key)",
