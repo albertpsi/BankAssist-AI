@@ -26,6 +26,8 @@ from bankassist.config import Settings
 from bankassist.errors import AuthorizationError, NoPendingApprovalError
 from bankassist.guardrails.nemo_adapter import NemoGuardrailsAdapter
 from bankassist.llm.factory import build_llm_client
+from bankassist.observability import trace as observability_trace
+from bankassist.observability import update_metadata
 from bankassist.security.context import SecurityContext
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -111,6 +113,7 @@ def _resolved_context(
 
 
 @router.post("/chat", response_model=AgentChatResponse, summary="Talk to the multi-agent assistant")
+@observability_trace("bankassist.chat")
 def chat(
     payload: AgentChatRequest,
     request: Request,
@@ -129,6 +132,8 @@ def chat(
         },
         config,
     )
+
+    update_metadata(route=result.get("route"), session_id=payload.session_id)
 
     events = result.get("execution_events", [])
     waiting = "__interrupt__" in result or is_waiting_for_approval(graph, config)
@@ -160,6 +165,7 @@ def chat(
 @router.post(
     "/resume", response_model=AgentChatResponse, summary="Approve or reject a pending dispute"
 )
+@observability_trace("bankassist.resume")
 def resume(
     payload: AgentResumeRequest,
     request: Request,

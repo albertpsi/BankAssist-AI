@@ -37,6 +37,8 @@ from bankassist.guardrails.tool_authorization import (
     check_permission,
 )
 from bankassist.llm.base import LLMClient
+from bankassist.observability import run as observability_run
+from bankassist.observability import update_metadata
 from bankassist.rag.pipeline.enterprise_pipeline import EnterpriseRagPipeline
 from bankassist.security.authorize import Permission
 from bankassist.security.context import SecurityContext
@@ -228,7 +230,12 @@ def build_graph(
         ]
         history = [m["content"] for m in state.get("messages", [])[-6:-1]]
         message = state["messages"][-1]["content"]
-        decision = supervisor.decide_route(llm, message, history)
+        # Named AgentOps operation span: the routing decision itself is not
+        # visible to automatic LangGraph instrumentation as a distinct step
+        # (Lab 6 requirements §5/§6).
+        decision = observability_run(
+            "operation", "supervisor.route", supervisor.decide_route, llm, message, history
+        )
         events.append(
             _event(
                 ExecutionEventType.ROUTE_SELECTED,
@@ -433,7 +440,14 @@ def build_graph(
 
         if transaction_id is None:
             try:
-                txns_result = get_recent_transactions(context, db_path, limit=5)
+                txns_result = observability_run(
+                    "tool",
+                    "get_recent_transactions",
+                    get_recent_transactions,
+                    context,
+                    db_path,
+                    limit=5,
+                )
             except BankAssistError as exc:
                 events.append(
                     _event(
@@ -486,7 +500,14 @@ def build_graph(
             }
 
         try:
-            detail = get_transaction_details(context, db_path, transaction_id=transaction_id)
+            detail = observability_run(
+                "tool",
+                "get_transaction_details",
+                get_transaction_details,
+                context,
+                db_path,
+                transaction_id=transaction_id,
+            )
         except AuthorizationError as exc:
             # Cross-customer access attempt (AC-8/AC-9): the row exists but belongs to
             # another customer. No transaction data is ever included in the answer.
@@ -586,7 +607,14 @@ def build_graph(
             )
         )
 
-        eligibility = check_dispute_eligibility(context, db_path, transaction_id=transaction_id)
+        eligibility = observability_run(
+            "tool",
+            "check_dispute_eligibility",
+            check_dispute_eligibility,
+            context,
+            db_path,
+            transaction_id=transaction_id,
+        )
         events.append(
             _event(
                 ExecutionEventType.TOOL_COMPLETED,
@@ -690,6 +718,13 @@ def build_graph(
                 f"Awaiting approval to dispute {pending['transaction_id']}",
             )
         ]
+        # HITL boundary (Lab 6 requirements §5/§6): `interrupt()` suspends this
+        # graph invocation entirely — resume happens on a later, separate
+        # invocation — so it cannot be wrapped as a single span the way a tool
+        # call can. Mark the pause and the eventual decision on the trace
+        # metadata instead, so both are visible even though they occur on
+        # different invocations of the same LangGraph thread.
+        update_metadata(hitl_status="waiting_approval", transaction_id=pending["transaction_id"])
         decision = interrupt(
             {
                 "action": pending["action"],
@@ -698,6 +733,7 @@ def build_graph(
             }
         )
         approved = bool(decision)
+        update_metadata(hitl_status="approved" if approved else "rejected")
         events.append(
             _event(
                 ExecutionEventType.APPROVAL_GRANTED
@@ -774,7 +810,10 @@ def build_graph(
             )
         )
         try:
-            result = create_dispute(
+            result = observability_run(
+                "tool",
+                "create_dispute",
+                create_dispute,
                 context,
                 db_path,
                 transaction_id=pending["transaction_id"],

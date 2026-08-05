@@ -1,7 +1,20 @@
 # ADR-0004 — Custom tracing and evaluation over hosted AgentOps tools
 
-**Status:** Proposed
+**Status:** Superseded by [ADR-0012](0012-agentops-observability.md) (tracing/observability
+half only) — 2026-08-04
 **Date:** 2026-08-03
+
+> **2026-08-04 update:** the tracing half of this decision is reversed by
+> [ADR-0012](0012-agentops-observability.md): AgentOps is explicitly the platform
+> requested for Lab 6, and its LangGraph/OpenAI auto-instrumentation makes "outsourcing
+> the observability layer removes the thing being graded" (this ADR's rejection
+> reasoning below) no longer the operative concern — the custom instrumentation layer
+> at BankAssist-specific boundaries *is* the graded implementation detail, on top of
+> AgentOps rather than instead of it. The **evaluation** half of this ADR stands:
+> `evaluation/` (Lab 6) is still a first-party deterministic-scorer harness, not a
+> hosted evaluation product — see `docs/requirements/lab-06-agentops-evaluation.md`.
+> `Span`/`Tracer` (the tracer this ADR specified) is left in place but not extended
+> further; ADR-0012 explains why.
 
 ## Context
 

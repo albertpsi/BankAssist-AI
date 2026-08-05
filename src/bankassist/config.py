@@ -115,6 +115,16 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     tracing_enabled: bool = True
 
+    # --- AgentOps (Lab 6, ADR-0012) ---
+    # Off by default so importing/starting the app, and the whole test suite,
+    # never depends on AgentOps being reachable. `init_agentops()` also checks
+    # for a non-blank key before calling the SDK — same "off unless explicitly
+    # configured" posture as Pinecone above.
+    agentops_enabled: bool = False
+    agentops_api_key: SecretStr | None = None
+    agentops_project: str = "BankAssist-AI"
+    agentops_environment: str = "lab"
+
     # --- Synthetic banking data (Lab 4) ---
     banking_db_path: Path = Path("./data/banking.db")
 
@@ -178,6 +188,12 @@ class Settings(BaseSettings):
         if self.pinecone_api_key is None:
             return False
         return bool(self.pinecone_api_key.get_secret_value().strip())
+
+    def has_agentops_credential(self) -> bool:
+        """True when a non-blank AgentOps key is configured."""
+        if self.agentops_api_key is None:
+            return False
+        return bool(self.agentops_api_key.get_secret_value().strip())
 
     @property
     def markdown_dir(self) -> Path:

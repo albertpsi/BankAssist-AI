@@ -41,11 +41,12 @@ The condition that would make this decision wrong.
 | [0001](0001-technology-stack.md) | Technology stack selection | Proposed |
 | [0002](0002-hand-written-orchestration.md) | Hand-written agent orchestration over a framework | Proposed |
 | [0003](0003-custom-guardrail-engine.md) | Custom layered guardrail engine | Proposed |
-| [0004](0004-custom-tracing-and-evaluation.md) | Custom tracing and evaluation over hosted AgentOps tools | Proposed |
+| [0004](0004-custom-tracing-and-evaluation.md) | Custom tracing and evaluation over hosted AgentOps tools | Superseded by 0012 (tracing half) |
 | [0005](0005-llm-provider-abstraction.md) | OpenAI as the initial provider behind an LLMClient abstraction | Accepted (amended 2026-08-03) |
 | [0006](0006-semantic-cache-eligibility.md) | Semantic cache eligibility and customer-data bypass | Accepted |
 | [0007](0007-pinecone-and-api-embeddings.md) | Pinecone and API embeddings replace ChromaDB and local sentence-transformers | Accepted |
 | [0008](0008-reranker-dependency.md) | Reinstate `sentence-transformers` (CrossEncoder-only) for Lab 3 reranking | Proposed |
+| [0012](0012-agentops-observability.md) | AgentOps for Lab 6 operational observability, instead of a custom dashboard | Accepted |
 
 ADRs 0001–0004 are **Accepted** as of the planning approval on 2026-08-03. ADR-0005 was
 amended at that approval — OpenAI replaces Anthropic as the initial provider. ADR-0006 was
