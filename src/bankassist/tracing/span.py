@@ -27,6 +27,7 @@ class SpanType(StrEnum):
     LLM_CALL = "llm_call"
     EMBEDDING = "embedding"
     RETRIEVAL = "retrieval"
+    CACHE = "cache"  # Lab 7: semantic/embedding/tool cache lookups (ADR-0013)
 
 
 class SpanStatus(StrEnum):

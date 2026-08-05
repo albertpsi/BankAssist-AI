@@ -1,7 +1,13 @@
 # ADR-0006 — Semantic cache eligibility and customer-data bypass
 
-**Status:** Accepted
+**Status:** Accepted — storage backend superseded by [ADR-0013](0013-redis-caching-layer.md)
 **Date:** 2026-08-03
+
+> **2026-08-05 update:** the *eligibility policy* below (what may be cached, the
+> fail-closed default, the twice-checked rule) is unchanged and remains authoritative.
+> Only the storage backend changes: Lab 7 (ADR-0013) implements this cache against
+> **Redis**, not the SQLite plan implied when this ADR was written. Every reference to
+> "the cache" below should be read as "the cache, now Redis-backed."
 
 ## Context
 

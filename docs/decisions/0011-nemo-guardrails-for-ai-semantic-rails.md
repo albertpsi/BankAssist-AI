@@ -169,6 +169,39 @@ the false-positive is actually gone against the real model requires re-running t
 live app (unit tests substitute a fake LLM entirely, so they cannot exercise gpt-4o-mini's
 real answer-formatting behavior) — pending the user re-running the reproduction case.
 
+## Known finding: output rail over-blocking KYC document names (2026-08-05)
+
+After the parser fix above, a second, unrelated false positive reproduced live: "what
+are the documents required for KYC?" — a legitimate policy answer listing document
+types (PAN card, Aadhaar, passport) — was still blocked.
+
+Root cause: the output rail's third criterion asked the classifier to flag "an
+explicit unmasked account/card number" *in addition to* investment advice. This
+criterion was redundant from the start — `guardrails/masking.py::mask_sensitive_identifiers`
+already deterministically masks any 13-19-digit card-PAN-shaped or SSN-shaped
+substring in every response, unconditionally, regardless of this classifier's
+verdict (`agents/graph.py`'s `output_guardrails_node` runs it right after the NeMo
+check). Per `CLAUDE.md` §8's own layering rule — "reserve model/classifier checks for
+properties that genuinely need semantic reasoning ... use a deterministic check
+whenever the property is decidable" — masking is exactly the kind of decidable
+property that should never have been a second, semantic check at all. Left in, it
+gave gpt-4o-mini room to over-generalize "financial identifier" to include mentions
+of identity-*document types* (PAN card, Aadhaar) even with no actual number present.
+
+**Fix** (`nemo_config/output_rail.yml`): removed the account/card-number clause from
+the classifier's criteria entirely — the deterministic masking layer already covers
+it unconditionally — and narrowed criterion 3 to personalized investment/trading
+advice only, its actually-semantic job. Added an explicit line stating that naming a
+document type is normal banking information, not a violation. The output rail's
+scope is now exactly: instruction/system-prompt leakage, role/privilege escalation,
+and investment-advice intent — the three properties that genuinely need an LLM's
+judgment, per `CLAUDE.md` §8.
+
+Verified: the full guardrail test suite still passes (behavior-level tests use a
+fake LLM and assert on its canned yes/no, so they are unaffected by prompt wording
+changes). Confirming the false positive is gone against the real model requires
+re-running the live app.
+
 ## Revisit when
 
 NeMo's output-rail wiring gap (see Alternatives) is resolved in a future NeMo release

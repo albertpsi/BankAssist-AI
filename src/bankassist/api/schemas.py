@@ -173,3 +173,23 @@ class AgentResumeRequest(BaseModel):
 
     session_id: str = Field(min_length=1, max_length=100)
     approved: bool
+
+
+class CacheStatsResponse(BaseModel):
+    """``GET /api/v1/cache/stats`` response body (Lab 7, ADR-0013).
+
+    Exact counters read from Redis, not the extrapolated demo estimates in the
+    Lab 7 documentation.
+    """
+
+    semantic_hits: int
+    semantic_misses: int
+    semantic_bypassed: int
+    embedding_hits: int
+    embedding_misses: int
+    tool_hits: int
+    tool_misses: int
+    tool_bypassed: int
+    estimated_openai_calls_saved: int
+    estimated_embedding_calls_saved: int
+    average_redis_latency_ms: float

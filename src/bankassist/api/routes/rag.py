@@ -40,10 +40,11 @@ def get_pipeline(request: Request) -> BasicRagPipeline:
 
     settings: Settings = request.app.state.settings
     tracer = request.app.state.tracer
+    embedding_cache = getattr(request.app.state, "embedding_cache", None)
 
     pipeline = BasicRagPipeline(
         settings=settings,
-        embedder=OpenAIEmbedder(settings, tracer),
+        embedder=OpenAIEmbedder(settings, tracer, embedding_cache=embedding_cache),
         store=PineconeVectorStore(settings, tracer),
         llm=build_llm_client(settings, tracer),
     )
@@ -66,6 +67,7 @@ def get_enterprise_pipeline(request: Request) -> EnterpriseRagPipeline:
     settings: Settings = request.app.state.settings
     tracer = request.app.state.tracer
     llm = build_llm_client(settings, tracer)
+    embedding_cache = getattr(request.app.state, "embedding_cache", None)
 
     _, chunks = chunk_corpus(settings)
 
@@ -74,7 +76,8 @@ def get_enterprise_pipeline(request: Request) -> EnterpriseRagPipeline:
         classifier=QueryClassifier(llm),
         rewriter=QueryRewriter(llm),
         vector_retriever=VectorRetriever(
-            OpenAIEmbedder(settings, tracer), PineconeVectorStore(settings, tracer)
+            OpenAIEmbedder(settings, tracer, embedding_cache=embedding_cache),
+            PineconeVectorStore(settings, tracer),
         ),
         bm25_retriever=BM25Retriever(chunks),
         reranker=CrossEncoderReranker(settings.reranker_model),

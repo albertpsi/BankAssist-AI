@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from openai import APIConnectionError
 
+from bankassist.caching.embedding_cache import EmbeddingCache
 from bankassist.config import Settings
 from bankassist.errors import EmbeddingError
 from bankassist.rag.embeddings import OpenAIEmbedder
@@ -155,6 +156,59 @@ def test_failed_embedding_marks_the_span_as_error(
     (span,) = tracer.spans()
     assert span.status is SpanStatus.ERROR
     assert span.error_type == "EmbeddingError"
+
+
+class TestEmbeddingCacheIntegration:
+    """Lab 7 (ADR-0013): `OpenAIEmbedder` with an `EmbeddingCache` collaborator.
+
+    Uses fakeredis, not a mock — the point is to prove the real cache-then-API
+    flow, not just that a method was called.
+    """
+
+    def test_repeated_text_reuses_the_cached_vector_and_skips_the_api_call(
+        self, settings: Settings
+    ) -> None:
+        import fakeredis
+
+        redis_settings = settings.model_copy(update={"redis_enabled": True})
+        cache = EmbeddingCache(fakeredis.FakeStrictRedis(), redis_settings)
+        embedder = OpenAIEmbedder(settings, embedding_cache=cache)
+        fake = FakeEmbeddings()
+        embedder._client = SimpleNamespace(embeddings=fake)  # noqa: SLF001
+
+        first = embedder.embed_query("what is the dispute window?")
+        second = embedder.embed_query("what is the dispute window?")
+
+        assert first == second
+        assert len(fake.calls) == 1  # the second call was served from cache
+        assert cache.hits == 1
+        assert cache.misses == 1
+
+    def test_partial_batch_hit_only_sends_the_misses_to_the_api(self, settings: Settings) -> None:
+        import fakeredis
+
+        redis_settings = settings.model_copy(update={"redis_enabled": True})
+        cache = EmbeddingCache(fakeredis.FakeStrictRedis(), redis_settings)
+        embedder = OpenAIEmbedder(settings, embedding_cache=cache)
+        fake = FakeEmbeddings()
+        embedder._client = SimpleNamespace(embeddings=fake)  # noqa: SLF001
+
+        embedder.embed_documents(["a", "b"])  # warms the cache for "a" and "b"
+        fake.calls.clear()
+
+        vectors = embedder.embed_documents(["a", "b", "c"])
+
+        assert len(fake.calls) == 1
+        assert fake.calls[0]["input"] == ["c"]
+        assert len(vectors) == 3
+
+    def test_without_a_cache_behaves_exactly_as_before(self, settings: Settings) -> None:
+        embedder, fake = _embedder(settings)
+
+        embedder.embed_query("q")
+        embedder.embed_query("q")
+
+        assert len(fake.calls) == 2  # no cache configured: every call hits the API
 
 
 class TestStubEmbedder:

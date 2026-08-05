@@ -22,12 +22,14 @@ from bankassist.api.schemas import (
     ExecutionEventSchema,
     TransactionOption,
 )
+from bankassist.caching.semantic_cache import SemanticCache
 from bankassist.config import Settings
 from bankassist.errors import AuthorizationError, NoPendingApprovalError
 from bankassist.guardrails.nemo_adapter import NemoGuardrailsAdapter
 from bankassist.llm.factory import build_llm_client
 from bankassist.observability import trace as observability_trace
 from bankassist.observability import update_metadata
+from bankassist.rag.embeddings import OpenAIEmbedder
 from bankassist.security.context import SecurityContext
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -51,8 +53,26 @@ def get_agent_graph(request: Request) -> Any:
     nemo = getattr(request.app.state, "nemo_guardrails", None) or NemoGuardrailsAdapter(settings)
     request.app.state.nemo_guardrails = nemo
 
+    # Lab 7 (ADR-0013): the semantic cache's query embeddings flow through the
+    # same shared embedding cache as every other embedding call in the app —
+    # a repeated policy question benefits from both caches, not just one.
+    embedding_cache = getattr(request.app.state, "embedding_cache", None)
+    redis_client = getattr(request.app.state, "redis_client", None)
+    redisearch_available = getattr(request.app.state, "redisearch_available", False)
+    semantic_embedder = OpenAIEmbedder(settings, tracer, embedding_cache=embedding_cache)
+    semantic_cache = SemanticCache(
+        redis_client,
+        settings,
+        semantic_embedder.embed_query,
+        redisearch_available=redisearch_available,
+    )
+
     graph = build_graph(
-        llm=llm, enterprise_pipeline=pipeline, db_path=settings.banking_db_path, nemo=nemo
+        llm=llm,
+        enterprise_pipeline=pipeline,
+        db_path=settings.banking_db_path,
+        nemo=nemo,
+        semantic_cache=semantic_cache,
     )
     request.app.state.agent_graph = graph
     return graph

@@ -1,0 +1,27 @@
+# Lab 7 (ADR-0013) local Redis for the caching layer.
+#
+# `redis-stack-server`, not plain `redis`, so RediSearch is loaded and the
+# semantic cache uses native vector KNN search rather than its documented
+# Python fallback (Lab 7 amendment #1). Equivalent standalone command:
+#
+#   docker run -d --name bankassist-redis -p 6379:6379 redis/redis-stack-server:latest
+#
+# The application never hardcodes this host/port — it reads REDIS_URL from
+# `.env` (see `.env.example`), which defaults to redis://localhost:6379/0.
+services:
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: bankassist-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - bankassist-redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  bankassist-redis-data:

@@ -13,6 +13,7 @@ from typing import Protocol
 
 from openai import OpenAI, OpenAIError
 
+from bankassist.caching.embedding_cache import EmbeddingCache
 from bankassist.config import Settings
 from bankassist.errors import ConfigurationError, EmbeddingError
 from bankassist.logging_config import get_logger
@@ -42,7 +43,12 @@ class Embedder(Protocol):
 class OpenAIEmbedder:
     """Implements ``Embedder`` against the OpenAI embeddings API."""
 
-    def __init__(self, settings: Settings, tracer: Tracer | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        tracer: Tracer | None = None,
+        embedding_cache: EmbeddingCache | None = None,
+    ) -> None:
         if settings.openai_api_key is None:
             raise ConfigurationError(
                 "OpenAIEmbedder requires OPENAI_API_KEY to be configured.",
@@ -51,6 +57,10 @@ class OpenAIEmbedder:
 
         self._settings = settings
         self._tracer = tracer or NoOpTracer()
+        # Lab 7 (ADR-0013): optional collaborator, default None. When absent, this
+        # class's behavior is byte-for-byte what Labs 2-6 shipped — an embedding
+        # cache is never required for `OpenAIEmbedder` to work.
+        self._embedding_cache = embedding_cache
         self._client = OpenAI(
             api_key=settings.openai_api_key.get_secret_value(),
             timeout=settings.llm_timeout_seconds,
@@ -111,7 +121,37 @@ class OpenAIEmbedder:
             return self._embed([text])[0]
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
-        """One API call. Wraps SDK errors and restores the requested order."""
+        """One logical embedding call. Wraps SDK errors and restores the
+        requested order.
+
+        Lab 7 (ADR-0013): consults the embedding cache first, per-text. Only
+        the texts that miss are sent to OpenAI, in one batched call preserving
+        their relative order; the results are then merged back into the full
+        output in original position. With no cache configured this reduces to
+        exactly what Labs 2-6 did.
+        """
+        cache = self._embedding_cache
+        if cache is None or not cache.enabled:
+            return self._embed_via_api(texts)
+
+        results: list[list[float] | None] = []
+        misses: list[tuple[int, str]] = []
+        for index, text in enumerate(texts):
+            cached = cache.get(self.model, text)
+            results.append(cached)
+            if cached is None:
+                misses.append((index, text))
+
+        if misses:
+            fetched = self._embed_via_api([text for _, text in misses])
+            for (index, text), vector in zip(misses, fetched, strict=True):
+                results[index] = vector
+                cache.set(self.model, text, vector)
+
+        return [vector for vector in results if vector is not None]
+
+    def _embed_via_api(self, texts: list[str]) -> list[list[float]]:
+        """One real OpenAI API call. Never consults the cache itself."""
         try:
             response = self._client.embeddings.create(model=self.model, input=texts)
         except OpenAIError as exc:
