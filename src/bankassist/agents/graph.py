@@ -21,6 +21,7 @@ from langgraph.types import Command, interrupt
 
 from bankassist.agents import banking_agent, dispute_agent, policy_agent, supervisor
 from bankassist.agents.state import BankAssistState
+from bankassist.caching.semantic_cache import SemanticCache
 from bankassist.errors import AuthorizationError, BankAssistError
 from bankassist.execution_event import (
     ExecutionEvent,
@@ -102,6 +103,7 @@ def build_graph(
     enterprise_pipeline: EnterpriseRagPipeline,
     db_path: Path,
     nemo: NemoGuardrailsAdapter,
+    semantic_cache: SemanticCache | None = None,
 ):
     """Construct and compile the guarded StateGraph with an in-memory checkpointer.
 
@@ -109,6 +111,12 @@ def build_graph(
     validation and the NeMo input rail run before the supervisor; the NeMo output
     rail and deterministic PII/secret protection run after every terminal agent node,
     funnelled through a single ``output_guardrails`` node before ``END`` (ADR-0011).
+
+    Lab 7 (ADR-0013): ``semantic_cache`` is optional — with none given, the policy
+    node behaves exactly as Labs 4-6 shipped. When given, the policy node consults
+    it before running the enterprise RAG pipeline, and stores the answer after,
+    subject to ADR-0006's eligibility rule (never touched for BANKING/DISPUTE,
+    which always invoke a customer-scoped tool).
     """
 
     def input_validation_node(state: BankAssistState, config: RunnableConfig) -> dict[str, Any]:  # noqa: ARG001
@@ -280,16 +288,76 @@ def build_graph(
                 "agent",
                 "Policy Agent",
                 ExecutionStatus.RUNNING,
-            ),
+            )
+        ]
+        question = state["messages"][-1]["content"]
+
+        if semantic_cache is not None:
+            cache_result = observability_run(
+                "operation",
+                "semantic_cache.lookup",
+                semantic_cache.lookup,
+                question,
+                route="POLICY",
+            )
+            events.append(
+                _event(
+                    ExecutionEventType.SEMANTIC_CACHE_HIT
+                    if cache_result.hit
+                    else ExecutionEventType.SEMANTIC_CACHE_MISS,
+                    "semantic_cache",
+                    "cache",
+                    "Semantic Cache",
+                    ExecutionStatus.COMPLETED,
+                    cache_result.reason
+                    + (
+                        f" (similarity={cache_result.similarity:.3f}, source={cache_result.source})"
+                        if cache_result.hit
+                        else ""
+                    ),
+                )
+            )
+            update_metadata(
+                semantic_cache_event="hit" if cache_result.hit else "miss",
+                semantic_cache_eligibility=cache_result.eligibility.value,
+            )
+            if cache_result.hit:
+                events.append(
+                    _event(
+                        ExecutionEventType.AGENT_COMPLETED,
+                        "policy_agent",
+                        "agent",
+                        "Policy Agent",
+                        ExecutionStatus.COMPLETED,
+                        "Served from semantic cache — RAG and LLM generation skipped.",
+                    )
+                )
+                events.append(
+                    _event(
+                        ExecutionEventType.RESPONSE_GENERATED,
+                        "final_response",
+                        "response",
+                        "Final Response",
+                        ExecutionStatus.COMPLETED,
+                    )
+                )
+                return {
+                    "current_agent": "policy_agent",
+                    "final_answer": cache_result.response,
+                    "retrieved_sources": [],
+                    "messages": [{"role": "assistant", "content": cache_result.response}],
+                    "execution_events": events,
+                }
+
+        events.append(
             _event(
                 ExecutionEventType.RAG_STARTED,
                 "enterprise_rag",
                 "rag",
                 "Enterprise RAG",
                 ExecutionStatus.RUNNING,
-            ),
-        ]
-        question = state["messages"][-1]["content"]
+            )
+        )
         result = policy_agent.answer_policy_question(enterprise_pipeline, question)
         events.append(
             _event(
@@ -301,6 +369,28 @@ def build_graph(
                 f"{len(result.sources)} source(s) retrieved",
             )
         )
+
+        if semantic_cache is not None:
+            eligibility = observability_run(
+                "operation",
+                "semantic_cache.store",
+                semantic_cache.store,
+                question,
+                result.answer,
+                route="POLICY",
+                customer_scoped_tool_invoked=False,
+            )
+            events.append(
+                _event(
+                    ExecutionEventType.SEMANTIC_CACHE_STORED,
+                    "semantic_cache",
+                    "cache",
+                    "Semantic Cache",
+                    ExecutionStatus.COMPLETED,
+                    f"Eligibility: {eligibility.value}",
+                )
+            )
+
         events.append(
             _event(
                 ExecutionEventType.AGENT_COMPLETED,

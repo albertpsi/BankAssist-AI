@@ -821,3 +821,57 @@ flowchart LR
     ApprovalCheck --> Tool["Tool Execution"]
     Tool --> Audit["ExecutionEvent (audit)"]
 ```
+
+## 14. Lab 7 — Cost optimization architecture (ADR-0013)
+
+Additive to every section above — Redis is introduced only as a caching layer; no
+existing component's behavior changes when Redis is disabled or unreachable (the
+default). Full design rationale: [ADR-0013](../decisions/0013-redis-caching-layer.md);
+eligibility policy: [ADR-0006](../decisions/0006-semantic-cache-eligibility.md); planning
+artifact: [`docs/plan/lab-07-cost-optimization-plan.md`](../plan/lab-07-cost-optimization-plan.md).
+
+### Current architecture (Labs 1–6, for comparison)
+
+```mermaid
+flowchart TD
+    User --> Guardrails["Input Guardrails"]
+    Guardrails --> LangGraph["LangGraph Supervisor"]
+    LangGraph --> Agents["Policy / Banking / Dispute Agent"]
+    Agents --> RAG["Enterprise RAG"]
+    Agents --> Tools["Scoped Tools"]
+    RAG --> OpenAI
+    Tools --> OpenAI
+    OpenAI --> AgentOps
+    AgentOps --> Response["Response to User"]
+```
+
+### Target (optimized) architecture
+
+```mermaid
+flowchart TD
+    User --> SemCheck["Semantic Cache lookup\n(policy/FAQ routes only, ADR-0006)"]
+    SemCheck -- hit --> OutputGuard["Output Guardrails (never skipped, ADR-0006 rule 4)"]
+    SemCheck -- miss/bypass --> EmbCheck["Embedding Cache\n(SHA256(model+text))"]
+    EmbCheck --> RAG["Enterprise RAG Pipeline"]
+    RAG --> ToolCache["Tool Response Cache\n(deterministic tools only)"]
+    ToolCache --> Agent["Agent Execution"]
+    Agent --> OpenAI
+    OpenAI --> Store["Store in Semantic Cache\n(re-checked eligibility)"]
+    Store --> OutputGuard
+    OutputGuard --> AgentOps
+    AgentOps --> Response["Response to User"]
+```
+
+### Three caches, one Redis instance
+
+| Cache | Key shape | TTL | Eligible content |
+|---|---|---|---|
+| Semantic response | `semantic:vec:{sha256(version+query)}` (hash), native RediSearch KNN | 24h | Policy/FAQ/KYC/card-terms/dispute-policy/general — `GLOBAL_CACHEABLE` only (ADR-0006/0013) |
+| Embedding | `embedding:{version}:{sha256(model+"\0"+text)}` | 30d | Any embedded text — model bound into the hash |
+| Tool response | `tool:{label}:{version}:{sha256(canonical_args)}` | 24h | Deterministic, non-customer tools on `TOOL_CACHE_ALLOWLIST` only |
+
+Redis is reached only through `bankassist.caching.redis_client.build_redis_client`,
+mirroring the "one module owns the SDK" convention already used for Pinecone
+(`rag/vector_store.py`) and OpenAI (`rag/embeddings.py`). `REDIS_ENABLED=false` (the
+default) or an unreachable Redis degrades every cache to a no-op — the app's
+correctness never depends on Redis being up.

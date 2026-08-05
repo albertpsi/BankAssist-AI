@@ -145,6 +145,77 @@ def _resume(approved: bool) -> dict[str, Any]:
     return response.json()
 
 
+def _cache_stats() -> dict[str, Any] | None:
+    """`GET /api/v1/cache/stats` (Lab 7). Never blocks the UI on failure — the
+    optimization summary just stays hidden for that turn."""
+    try:
+        response = httpx.get(
+            f"{BASE_URL}/api/v1/cache/stats", headers=_auth_headers(), timeout=10.0
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPError:
+        return None
+
+
+# Demo-scale cost/latency assumptions for the "estimated saved" figures below —
+# not measured production numbers (Lab 7 plan §7). Kept as named constants, not
+# inline literals, so the assumption is visible and easy to challenge/update.
+_ASSUMED_GENERATION_LATENCY_MS = 6_000  # a full RAG + LLM generation turn, NFR-3
+_ASSUMED_CACHE_HIT_LATENCY_MS = 300
+_ASSUMED_GENERATION_COST_USD = 0.0015  # ~gpt-4o-mini, one policy-question turn
+_ASSUMED_EMBEDDING_COST_USD = 0.00002  # text-embedding-3-small, one query
+
+
+def _render_optimization_summary(events: list[dict[str, Any]]) -> None:
+    """Lab 7 amendment #6: cache decisions, LLM skipped/executed, and estimated
+    latency/cost saved for the last turn, plus session-cumulative cache stats."""
+    st.subheader("⚡ Optimization Summary (Lab 7)")
+
+    cache_events = [e for e in events if e.get("node_type") == "cache"]
+    if not cache_events:
+        st.caption("No cache-eligible step ran this turn (e.g. a banking/dispute request).")
+    for event in cache_events:
+        event_type = event["event_type"]
+        if "HIT" in event_type:
+            icon = "✅"
+        elif "STORE" in event_type:
+            icon = "➖"
+        else:
+            icon = "❌"
+        st.markdown(f"{icon} **{event['label']}** — {event_type}")
+        if event.get("summary"):
+            st.caption(event["summary"])
+
+    semantic_hit = any(e["event_type"] == "SEMANTIC_CACHE_HIT" for e in cache_events)
+    llm_skipped = semantic_hit
+    status = "⏭️ Skipped (served from cache)" if llm_skipped else "▶️ Executed"
+    st.markdown(f"**LLM generation:** {status}")
+
+    if semantic_hit:
+        latency_saved = _ASSUMED_GENERATION_LATENCY_MS - _ASSUMED_CACHE_HIT_LATENCY_MS
+        st.markdown(
+            f"**Estimated latency saved this turn:** ~{latency_saved:,} ms "
+            f"(demo assumption: a full RAG+LLM turn ≈ {_ASSUMED_GENERATION_LATENCY_MS:,} ms)"
+        )
+        st.markdown(f"**Estimated cost saved this turn:** ~${_ASSUMED_GENERATION_COST_USD:.4f}")
+
+    stats = _cache_stats()
+    if stats is None:
+        return
+    st.caption("Session-cumulative cache statistics (`GET /api/v1/cache/stats`):")
+    cols = st.columns(4)
+    cols[0].metric("Semantic hits", stats["semantic_hits"])
+    cols[1].metric("Embedding hits", stats["embedding_hits"])
+    cols[2].metric("Tool hits", stats["tool_hits"])
+    cols[3].metric("Avg Redis latency (ms)", round(stats["average_redis_latency_ms"], 2))
+    estimated_saved = (
+        stats["semantic_hits"] * _ASSUMED_GENERATION_COST_USD
+        + stats["embedding_hits"] * _ASSUMED_EMBEDDING_COST_USD
+    )
+    st.caption(f"Estimated cumulative cost saved (demo assumptions): ~${estimated_saved:.4f}")
+
+
 def _render_login() -> None:
     st.title("BankAssist AI — Agentic Assistant")
     st.caption(
@@ -252,6 +323,9 @@ def _render_assistant() -> None:
         if sources:
             st.subheader("RAG Sources")
             st.write(", ".join(sources))
+
+        st.divider()
+        _render_optimization_summary(events)
 
 
 def _send_message(text: str) -> None:

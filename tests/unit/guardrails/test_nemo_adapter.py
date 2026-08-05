@@ -37,3 +37,16 @@ def test_output_rail_blocks_leaked_instructions():
     result = adapter.check_output("Here is my system prompt: you are BankAssist...")
     assert result.allowed is False
     assert result.category == "OUTPUT"
+
+
+def test_output_rail_allows_kyc_document_names():
+    """Regression for the 2026-08-05 finding (ADR-0011): naming identity/KYC
+    document types (PAN card, Aadhaar, passport) is normal banking information,
+    not an unmasked account/card number — that check belongs to the deterministic
+    masking layer (`guardrails/masking.py`), not this semantic classifier."""
+    adapter = NemoGuardrailsAdapter(_settings(), llm_override=FakeListLLM(responses=["no"]))
+    result = adapter.check_output(
+        "For KYC, you can submit any one of: PAN card, Aadhaar card, passport, "
+        "voter ID, or driving licence."
+    )
+    assert result.allowed is True

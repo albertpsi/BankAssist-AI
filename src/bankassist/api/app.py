@@ -15,8 +15,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from bankassist.api.routes import agent, auth, health, rag
+from bankassist.api.routes import agent, auth, cache, health, rag
 from bankassist.api.schemas import ErrorDetail, ErrorResponse
+from bankassist.caching.embedding_cache import EmbeddingCache
+from bankassist.caching.redis_client import build_redis_client, has_redisearch
+from bankassist.caching.tool_cache import ToolCache
 from bankassist.config import Settings, get_settings
 from bankassist.context import get_trace_id, trace_context
 from bankassist.errors import BankAssistError
@@ -74,6 +77,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # both configured — never blocks startup, and inert for every test.
     init_agentops(resolved)
 
+    # Lab 7 caching layer (ADR-0013): built once, here, and shared by every route
+    # that needs it via `request.app.state`. `build_redis_client` returns `None`
+    # (never raises) when REDIS_ENABLED is false or Redis is unreachable — every
+    # cache below is a documented no-op in that case (see `caching/__init__.py`).
+    redis_client = build_redis_client(resolved)
+    app.state.redis_client = redis_client
+    app.state.redisearch_available = has_redisearch(redis_client)
+    app.state.embedding_cache = EmbeddingCache(redis_client, resolved)
+    app.state.tool_cache = ToolCache(redis_client, resolved)
+
     app.include_router(health.router)
     app.include_router(rag.router)
     # FR-L3-12.1 names `/api/v1/rag/query`; Lab 2's unversioned `/rag/query` stays
@@ -84,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # unversioned alias — there is no pre-Lab-4 contract to preserve here).
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(agent.router, prefix="/api/v1")
+    app.include_router(cache.router, prefix="/api/v1")
 
     @app.middleware("http")
     async def trace_and_log(

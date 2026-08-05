@@ -128,6 +128,33 @@ class Settings(BaseSettings):
     # --- Synthetic banking data (Lab 4) ---
     banking_db_path: Path = Path("./data/banking.db")
 
+    # --- Redis caching layer (Lab 7, ADR-0013) ---
+    # Off by default — same "off unless explicitly configured" posture as Pinecone
+    # and AgentOps above. A Redis outage or absence must never take down the app;
+    # every cache in `bankassist.caching` degrades to the uncached Labs 1-6 path.
+    redis_enabled: bool = False
+    redis_url: str = "redis://localhost:6379/0"
+    redis_connect_timeout_seconds: float = Field(default=2.0, gt=0)
+    redis_socket_timeout_seconds: float = Field(default=2.0, gt=0)
+
+    # Bumping this invalidates every semantic-cache and tool-cache entry at once
+    # (ADR-0013 key design) without touching the embedding cache, which is keyed
+    # by model+text and stays valid across a corpus/version change.
+    cache_key_version: str = "v1"
+
+    semantic_cache_enabled: bool = True
+    semantic_cache_ttl_seconds: int = Field(default=86_400, gt=0)  # 24h
+    semantic_cache_similarity_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
+    # Upper bound on the candidate set scanned when RediSearch/KNN is unavailable
+    # and the fallback Python-side cosine scan is used (see semantic_cache.py).
+    semantic_cache_max_candidates: int = Field(default=500, gt=0)
+
+    embedding_cache_enabled: bool = True
+    embedding_cache_ttl_seconds: int = Field(default=2_592_000, gt=0)  # 30d
+
+    tool_cache_enabled: bool = True
+    tool_cache_ttl_seconds: int = Field(default=86_400, gt=0)  # 24h
+
     # --- Local auth + RBAC (Lab 4, ADR-0010) ---
     # Demo signing secret. Never a production secret — this is a teaching artifact.
     jwt_secret: SecretStr = SecretStr("dev-only-insecure-secret-change-me")
